@@ -210,13 +210,29 @@ function drawDex(){
   dex.appendChild(grid);
 }
 
+/* ---------- home: the pasture ---------- */
+const PASTURE_MAX = 30;
+let pasture = null;
+function drawHome(){
+  if(!pasture) pasture = window.Pasture.create({canvas: $('#pasture'), label: $('#plabel'), onOpen: g => { show(g); location.hash = 'scan'; }});
+  const all = Object.entries(col).sort((a,b) => b[1].last - a[1].last);
+  pasture.setCreatures(all.slice(0, PASTURE_MAX).map(([g]) => ({g, t: creature(g)})));
+  pasture.start();
+  const n = all.length;
+  $('#pasture-note').textContent = !n ? 'Nobody lives here yet. Scan a barcode and your creatures will move in.'
+    : n > PASTURE_MAX ? `Your ${PASTURE_MAX} most recent catches are out in the meadow. Tap one to say hello.`
+    : `${n} ${n === 1 ? 'creature lives' : 'creatures live'} here. Tap one to say hello.`;
+}
+
+const VIEWS = {scan: ['#view-scan', '#tab-scan'], home: ['#view-home', '#tab-home'], collection: ['#view-dex', '#tab-dex']};
 function route(){
-  const dex = location.hash === '#collection';
-  $('#view-scan').style.display = dex ? 'none' : 'flex';
-  $('#view-dex').style.display = dex ? 'flex' : 'none';
-  $('#tab-scan').toggleAttribute('aria-current', !dex); if(!dex) $('#tab-scan').setAttribute('aria-current','page');
-  $('#tab-dex').toggleAttribute('aria-current', dex); if(dex) $('#tab-dex').setAttribute('aria-current','page');
-  if(dex) drawDex();
+  const name = VIEWS[location.hash.slice(1)] ? location.hash.slice(1) : 'scan';
+  for(const [k, [view, tab]] of Object.entries(VIEWS)){
+    $(view).style.display = k === name ? 'flex' : 'none';
+    if(k === name) $(tab).setAttribute('aria-current', 'page'); else $(tab).removeAttribute('aria-current');
+  }
+  if(name === 'collection') drawDex();
+  if(name === 'home') drawHome(); else if(pasture) pasture.stop();
   window.scrollTo({top:0, behavior:'auto'});
 }
 
@@ -243,7 +259,10 @@ $('#file').addEventListener('change', async e => {
 });
 $('#typebtn').addEventListener('click', () => { const m = $('#manual'); m.hidden = !m.hidden; if(!m.hidden) $('#upc').focus(); });
 $('#manual').addEventListener('submit', e => { e.preventDefault(); hatch($('#upc').value); });
-document.addEventListener('visibilitychange', () => { if(document.hidden && scanning) closeCamera(); });
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden && scanning) closeCamera();
+  if(pasture){ if(document.hidden) pasture.stop(); else if(location.hash === '#home') pasture.start(); }
+});
 window.addEventListener('hashchange', route);
 
 updateCount();
