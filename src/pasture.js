@@ -244,9 +244,14 @@ function makeSprite(t){
   ctx.putImageData(img, 0, 0);
   return {cv, x0, x1, y0, y1};
 }
+/* Where a creature may stand. Walkers keep to the near bank; winged ones can also use the far bank (hopping
+   over the water), aquatic ones can be anywhere including the stream, and floaters drift wherever they like. */
+const nearOK = (c, x, y) => x + c.hw <= sL(y) - 2;
+const farOK = (c, x, y) => x - c.hw >= sR(y) + 2;   // with the right-edge limit this keeps them to the roomy part by the tree
 function walkable(c, x, y){
-  if(y < Y0 || y > H - 3 || x - c.hw < 3) return false;
-  return c.aquatic ? x <= sR(y) - 3 : x + c.hw <= sL(y) - 2;
+  if(y < Y0 || y > H - 3 || x - c.hw < 3 || x + c.hw > W - 3) return false;
+  if(c.move === 'swim' || c.move === 'float') return true;
+  return nearOK(c, x, y) || (c.move === 'fly' && farOK(c, x, y));
 }
 const inWater = c => {const x = Math.round(c.x), y = Math.round(c.y); return y < H && y >= 0 && x >= 0 && x < W && !!isWater[y * W + x];};
 
@@ -254,6 +259,7 @@ function newCreature(g, t){
   const spr = makeSprite(t), n = (spr.x1 - spr.x0 + 1);
   const r = mulberry(hash32(g + ':pasture'));
   const c = {g, t, spr, hw: Math.max(3, n / 2), floater: t.feet === 'float', aquatic: t.domain === 'aquatic',
+    move: t.feet === 'float' ? 'float' : t.domain === 'aquatic' ? 'swim' : /^wings_/.test(t.sides) ? 'fly' : 'walk',
     st: 'idle', timer: r() * 3, lift: 0, ph: r() * 4, happy: 0, x: 0, y: 0};
   const size = spr.y1 - spr.y0 + 1;
   c.stride = 7 + size * .22; c.hopH = 3 + Math.max(0, 32 - size) * .2; c.hopT = .3 + size * .006;
@@ -264,17 +270,33 @@ function newCreature(g, t){
 function pickTarget(c){
   for(let i = 0; i < 14; i++){
     let tx, ty;
-    if(c.aquatic && Math.random() < .5){ ty = c.y + (Math.random() - .5) * 50; tx = sCx(ty) + (Math.random() - .5) * sW(ty) * .5; }
+    const roll = Math.random();
+    if(c.move !== 'walk' && roll < .25){   // a trip to the other side of the stream
+      ty = c.y + (Math.random() - .5) * 40;
+      tx = c.x < sCx(c.y) ? sR(ty) + 2 + c.hw + Math.random() * 20 : sL(ty) - 2 - c.hw - Math.random() * 30;
+    }
+    else if(c.aquatic && roll < .6){ ty = c.y + (Math.random() - .5) * 50; tx = sCx(ty) + (Math.random() - .5) * sW(ty) * .5; }
     else { const a = Math.random() * Math.PI * 2, dd = 14 + Math.random() * 40; tx = c.x + Math.cos(a) * dd; ty = c.y + Math.sin(a) * dd * .6; }
-    if(walkable(c, tx, ty) && walkable(c, (tx + c.x) / 2, (ty + c.y) / 2)){ c.tx = tx; c.ty = ty; return true; }
+    if(walkable(c, tx, ty) && (c.move === 'fly' || walkable(c, (tx + c.x) / 2, (ty + c.y) / 2))){ c.tx = tx; c.ty = ty; return true; }
   }
   return false;
 }
-/* the nearest spot this creature can stand on: in front of the fence and on its own side of the stream */
+/* the nearest spot this creature can stand on to (x, y) */
 function reachable(c, x, y){
   y = clamp(y, Y0, H - 3);
-  x = Math.max(x, 3 + c.hw);
-  return [Math.min(x, c.aquatic ? sR(y) - 3 : sL(y) - 2 - c.hw), y];
+  x = clamp(x, 3 + c.hw, W - 3 - c.hw);
+  if(walkable(c, x, y)) return [x, y];
+  const near = [Math.min(x, sL(y) - 2 - c.hw), y], far = [Math.max(x, sR(y) + 2 + c.hw), y];
+  return c.move === 'fly' && walkable(c, ...far) && far[0] - x < x - near[0] ? far : near;
+}
+/* a winged creature reaching the water flutters straight over it to the first dry spot on the far side */
+function flyAcross(c, dx, dy, dist){
+  const ux = dx / dist, uy = dy / dist, startNear = c.x < sCx(c.y);
+  for(let s = c.stride; s <= Math.min(dist, 55); s++){
+    const x = c.x + ux * s, y = c.y + uy * s;
+    if(walkable(c, x, y) && (x < sCx(y)) !== startNear) return [x, y, s];
+  }
+  return null;
 }
 function nextHop(c){
   const dx = c.tx - c.x, dy = c.ty - c.y, dist = Math.hypot(dx, dy);
@@ -285,6 +307,10 @@ function nextHop(c){
   if(c.floater && !c.happy){ c.st = 'glide'; return; }
   const k = c.happy ? 0 : Math.min(1, c.stride / dist);
   let nx = c.x + dx * k, ny = c.y + dy * k;
+  if(!c.happy && c.move === 'fly' && !walkable(c, nx, ny)){
+    const j = flyAcross(c, dx, dy, dist);
+    if(j){ c.hop = {fx: c.x, fy: c.y, tx: j[0], ty: j[1], dur: .45 + j[2] * .01, h: 10 + j[2] * .12}; c.st = 'crouch'; c.timer = .1; return; }
+  }
   if(c.called) [nx, ny] = reachable(c, nx, ny);
   if(c.called && Math.hypot(nx - c.x, ny - c.y) < .5){ c.called = false; c.st = 'idle'; c.timer = 3; return; }   // as close as it can get
   if(!c.happy && !walkable(c, nx, ny)){ c.called = false; c.st = 'idle'; c.timer = 1 + Math.random() * 2; return; }
@@ -334,7 +360,10 @@ function drawCreature(ctx, c, t){
   const left = fx - Math.round(CXS + .5), top = fy - FOOT - lift;
   if(!wet){
     const rx = Math.max(2, Math.round(c.hw * .85 - lift * .25));
-    ctx.fillStyle = SHADOW; ctx.fillRect(fx - rx, fy, rx * 2, 1); ctx.fillRect(fx - rx + 1, fy + 1, rx * 2 - 2, 1);
+    if(inWater(c)){   // a floater's shadow on the water, broken up by the current
+      ctx.fillStyle = 'rgba(10,40,80,.3)';
+      for(let x = fx - rx; x < fx + rx; x++) if((x + Math.floor(t * 6)) % 4){ ctx.fillRect(x, fy, 1, 1); if(x > fx - rx && x < fx + rx - 1) ctx.fillRect(x, fy + 1, 1, 1); }
+    } else { ctx.fillStyle = SHADOW; ctx.fillRect(fx - rx, fy, rx * 2, 1); ctx.fillRect(fx - rx + 1, fy + 1, rx * 2 - 2, 1); }
   }
   const sh = wet ? FOOT - 3 : FOOT + 2;   // rows of the sprite above the waterline
   if((c.st === 'crouch' || c.st === 'land') && !wet) ctx.drawImage(S.cv, 0, 0, F, sh, left - 1, top + 2, F + 2, sh - 2);
