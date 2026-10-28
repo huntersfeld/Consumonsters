@@ -270,20 +270,42 @@ function pickTarget(c){
   }
   return false;
 }
+/* the nearest spot this creature can stand on: in front of the fence and on its own side of the stream */
+function reachable(c, x, y){
+  y = clamp(y, Y0, H - 3);
+  x = Math.max(x, 3 + c.hw);
+  return [Math.min(x, c.aquatic ? sR(y) - 3 : sL(y) - 2 - c.hw), y];
+}
 function nextHop(c){
   const dx = c.tx - c.x, dy = c.ty - c.y, dist = Math.hypot(dx, dy);
-  if(!c.happy && dist < 2){ c.st = 'idle'; c.timer = 1 + Math.random() * 3.5; return; }
+  if(!c.happy && dist < 2){
+    if(c.called){ c.called = false; c.happy = 1; c.linger = true; nextHop(c); return; }   // made it: a happy hop on arrival
+    c.st = 'idle'; c.timer = c.linger ? 3 + Math.random() * 3 : 1 + Math.random() * 3.5; c.linger = false; return;
+  }
   if(c.floater && !c.happy){ c.st = 'glide'; return; }
-  const k = c.happy ? 0 : Math.min(1, c.stride / dist), nx = c.x + dx * k, ny = c.y + dy * k;
-  if(!c.happy && !walkable(c, nx, ny)){ c.st = 'idle'; c.timer = 1 + Math.random() * 2; return; }
+  const k = c.happy ? 0 : Math.min(1, c.stride / dist);
+  let nx = c.x + dx * k, ny = c.y + dy * k;
+  if(c.called) [nx, ny] = reachable(c, nx, ny);
+  if(c.called && Math.hypot(nx - c.x, ny - c.y) < .5){ c.called = false; c.st = 'idle'; c.timer = 3; return; }   // as close as it can get
+  if(!c.happy && !walkable(c, nx, ny)){ c.called = false; c.st = 'idle'; c.timer = 1 + Math.random() * 2; return; }
   c.hop = {fx: c.x, fy: c.y, tx: nx, ty: ny, dur: c.happy ? .4 : c.hopT, h: c.happy ? 9 : c.hopH};
-  c.st = 'crouch'; c.timer = .08;
+  c.st = 'crouch'; c.timer = c.called ? .05 : .08;
+}
+/* "come here!": creatures near the tapped spot head over, the closest first; far ones may not bother */
+function call(mobs, x, y){
+  const near = mobs.map(c => ({c, d: Math.hypot(c.x - x, (c.y - y) / .6)})).filter(({d}) => d < 110 || Math.random() < .5).sort((a, b) => a.d - b.d);
+  near.forEach(({c, d}, i) => {
+    const a = i * 2.4, r = i ? 6 + 7 * Math.sqrt(i) : 0;   // spread them around the spot so they don't pile up
+    [c.tx, c.ty] = reachable(c, x + Math.cos(a) * r, y + Math.sin(a) * r * .6);
+    c.called = true; c.linger = false; c.happy = 0;
+    if(c.st === 'idle'){ c.timer = .1 + d * .004 + Math.random() * .2; }
+  });
 }
 function stepCreature(c, dt, fx){
   switch(c.st){
     case 'idle':
       c.timer -= dt;
-      if(c.timer <= 0){ if(!c.sel && Math.random() < .75 && pickTarget(c)) nextHop(c); else c.timer = 1 + Math.random() * 3; }
+      if(c.timer <= 0){ if(c.called || (!c.sel && Math.random() < .75 && pickTarget(c))) nextHop(c); else c.timer = 1 + Math.random() * 3; }
       break;
     case 'crouch': c.timer -= dt; if(c.timer <= 0){ c.st = 'air'; c.timer = 0; } break;
     case 'air': {
@@ -294,8 +316,8 @@ function stepCreature(c, dt, fx){
     }
     case 'land': c.timer -= dt; if(c.timer <= 0){ if(c.happy) nextHop(c); else if(c.sel){ c.st = 'idle'; c.timer = 1; } else nextHop(c); } break;
     case 'glide': {
-      const dx = c.tx - c.x, dy = c.ty - c.y, dist = Math.hypot(dx, dy), v = 7 * dt;
-      if(dist <= v || c.sel){ c.st = 'idle'; c.timer = 1 + Math.random() * 3; break; }
+      const dx = c.tx - c.x, dy = c.ty - c.y, dist = Math.hypot(dx, dy), v = (c.called ? 14 : 7) * dt;
+      if(dist <= v || c.sel){ c.st = 'idle'; c.timer = c.called ? 3 + Math.random() * 3 : 1 + Math.random() * 3; c.called = false; break; }
       c.x += dx / dist * v; c.y += dy / dist * v;
       break;
     }
@@ -328,19 +350,31 @@ function makeFx(){
   const ps = [];
   const petal = [css([60, 30, 97]), css([330, 60, 84]), css([50, 90, 80])], leaf = [css(hi(LEAF)), css(LEAF)], drop = css(WATER.glint);
   return {
+    ping(x, y){ ps.push({k: 'ring', x, y, life: .7}); },
     splash(x, y){ for(let i = 0; i < 6; i++) ps.push({k: 'drop', x, y, vx: (Math.random() - .5) * 26, vy: -14 - Math.random() * 16, life: .45, c: drop}); },
     step(dt, t){
       if(ps.length < 40 && Math.random() < dt * (.35 + 4 * gustAt(20, t))) ps.push({k: 'seed', x: -2, y: HZ + 6 + Math.random() * (H - HZ - 10), life: 12, ph: Math.random() * 6, c: petal[Math.floor(Math.random() * 3)]});
       if(ps.length < 40 && Math.random() < dt * .25){ const [bx, by, rx, ry] = TREE[Math.floor(Math.random() * TREE.length)]; ps.push({k: 'leaf', x: bx + (Math.random() - .5) * rx, y: by + ry * .5, floor: HZ + 16 + Math.random() * 10, life: 8, ph: Math.random() * 6, c: leaf[Math.floor(Math.random() * 2)]}); }
       for(const p of ps){
         p.life -= dt;
+        if(p.k === 'ring') continue;
         if(p.k === 'drop'){ p.vy += 90 * dt; p.x += p.vx * dt; p.y += p.vy * dt; }
         else if(p.k === 'seed'){ p.x += (5 + wind(p.x, t) * 18) * dt; p.y += Math.sin(t * 3 + p.ph) * 6 * dt + 1.2 * dt; if(p.x > W + 2) p.life = 0; }
         else { if(p.y < p.floor){ p.x += (wind(p.x, t) * 9 + Math.sin(t * 2 + p.ph) * 6) * dt; p.y += 7 * dt; } else if(p.life > 1) p.life = 1; }
       }
       for(let i = ps.length - 1; i >= 0; i--) if(ps[i].life <= 0) ps.splice(i, 1);
     },
-    draw(ctx){ for(const p of ps){ ctx.fillStyle = p.c; ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1); } },
+    draw(ctx){
+      for(const p of ps){
+        if(p.k === 'ring'){   // a little ripple where you called from
+          const k = 1 - p.life / .7, r = 2 + k * 7;
+          ctx.fillStyle = `rgba(255,253,235,${(1 - k) * .9})`;
+          for(let i = 0; i < 16; i++){ const a = i / 16 * Math.PI * 2; ctx.fillRect(Math.round(p.x + Math.cos(a) * r), Math.round(p.y + Math.sin(a) * r * .5), 1, 1); }
+          continue;
+        }
+        ctx.fillStyle = p.c; ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1);
+      }
+    },
   };
 }
 const BUTTERFLIES = [{ph: 0, cx: 60, cy: HZ + 50, c: css([50, 92, 72])}, {ph: 2.4, cx: 110, cy: HZ + 110, c: css([0, 0, 97])}, {ph: 4.1, cx: 40, cy: HZ + 140, c: css([22, 88, 62])}];
@@ -420,7 +454,10 @@ function create({canvas, label, onOpen}){
       const lx = px - (Math.round(c.x) - Math.round(CXS + .5)), ly = py - (Math.round(c.y) - FOOT - liftOf(c, t));
       return lx >= c.spr.x0 - 2 && lx <= c.spr.x1 + 3 && ly >= c.spr.y0 - 2 && ly <= c.spr.y1 + 3;
     });
-    select(hit && hit !== sel ? hit : null);
+    if(hit){ select(hit !== sel ? hit : null); return; }
+    const hadSel = !!sel; select(null);
+    if(still || hadSel) return;   // the first tap off a creature just closes its label
+    call(mobs, px, py); fx.ping(Math.round(px), Math.round(py));
   });
 
   return {
