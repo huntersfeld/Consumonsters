@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Consumonsters</title>
+<meta name="description" content="Scan product barcodes to hatch and collect pixel creatures.">
+<meta name="theme-color" content="#13151A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Consumonsters">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400;500&family=Pixelify+Sans:wght@500;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main class="app">
+  <header class="topbar">
+    <div class="logo">Consu<span>monsters</span></div>
+    <div class="count" id="count">0 caught</div>
+  </header>
+
+  <section id="view-scan" class="view-scan" style="display:flex;flex-direction:column;gap:16px">
+    <div class="stage" id="stage">
+      <canvas id="hero" width="360" height="360" role="img" aria-label="Creature sprite"></canvas>
+      <div class="flash" id="flash"></div>
+      <div class="laser" id="laser"></div>
+      <span class="badge" id="badge" hidden></span>
+    </div>
+    <article class="tag" id="tag" aria-live="polite"></article>
+
+    <button class="scanbtn" id="scan" type="button">
+      <svg viewBox="0 0 30 22" aria-hidden="true" fill="currentColor"><rect x="0" y="0" width="2" height="22"/><rect x="4" y="0" width="1" height="22"/><rect x="7" y="0" width="3" height="22"/><rect x="12" y="0" width="1" height="22"/><rect x="15" y="0" width="2" height="22"/><rect x="19" y="0" width="1" height="22"/><rect x="22" y="0" width="3" height="22"/><rect x="27" y="0" width="1" height="22"/><rect x="29" y="0" width="1" height="22"/></svg>
+      Scan a barcode
+    </button>
+    <div class="status" id="status" role="status"></div>
+    <div class="row">
+      <button class="btn" id="photo" type="button">Use a photo</button>
+      <button class="btn" id="typebtn" type="button">Type the number</button>
+    </div>
+    <form class="manual" id="manual" hidden>
+      <label for="upc" class="eyebrow" style="flex-basis:100%">UPC or EAN number</label>
+      <input id="upc" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="036000291452">
+      <button type="submit" class="btn" style="flex:0 0 auto">Hatch</button>
+    </form>
+    <input type="file" id="file" accept="image/*" capture="environment" hidden>
+  </section>
+
+  <section id="view-dex" style="display:none;flex-direction:column;gap:16px">
+    <div class="dexhead">
+      <h2 style="font-size:28px">Collection</h2>
+      <div class="progress" id="progress"></div>
+      <div class="filters" id="filters" role="group" aria-label="Filter by rarity"></div>
+    </div>
+    <div id="dex"></div>
+    <p class="note">Your collection is saved in this browser on this device.</p>
+  </section>
+</main>
+
+<div class="tabs"><nav aria-label="Main">
+  <a href="#scan" id="tab-scan" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7V4h3M18 4h3v3M21 17v3h-3M6 20H3v-3"/><path d="M7 8v8M10 8v8M13 8v8M16 8v8"/></svg>Scan</a>
+  <a href="#collection" id="tab-dex"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Collection</a>
+</nav></div>
+
+<div class="cam" id="cam" hidden>
+  <div class="view"><video id="video" playsinline muted></video><div class="reticle"></div></div>
+  <p id="cam-msg">Line the barcode up inside the box.</p>
+  <div class="row">
+    <button class="btn" id="cam-photo" type="button">Use a photo</button>
+    <button class="btn" id="cam-close" type="button">Cancel</button>
+  </div>
+</div>
+
+<script src="vendor/zxing-library-0.21.3.min.js"></script>
+<script src="src/engine.js"></script>
+<script src="src/app.js"></script>
+</body>
+</html>
