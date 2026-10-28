@@ -1,0 +1,16 @@
+{
+  "name": "Consumonsters",
+  "short_name": "Consumonsters",
+  "description": "Scan product barcodes to hatch and collect pixel creatures.",
+  "start_url": "./#scan",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0F1216",
+  "theme_color": "#13151A",
+  "icons": [
+    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
