@@ -34,7 +34,7 @@ Phones only allow the camera over HTTPS, so to test scanning on a phone use the 
 | --- | --- |
 | `src/engine.js` | The creature generator from the design spec: barcode to traits to sprite. Seed version `cm-v1`. |
 | `src/app.js` | Scanning (live camera, photo or typed), the hatch screen and the collection. |
-| `src/pasture.js` | The Home tab: a pixel meadow with a stream where caught creatures hop around. It only draws creatures, so it never changes them. |
+| `src/pasture.js` | The Home tab: a pixel meadow with a stream where caught creatures hop around; tap empty grass to call them over. It only draws creatures, so it never changes them. |
 | `vendor/zxing-library-0.21.3.min.js` | Barcode decoding for browsers without the built-in BarcodeDetector, such as iPhone Safari. Apache 2.0. |
 | `sw.js`, `manifest.webmanifest`, `icons/` | What makes it installable and work offline. |
 | `tests/` | Locks the generator so creatures can't change by accident. |
