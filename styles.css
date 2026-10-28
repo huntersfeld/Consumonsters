@@ -109,10 +109,19 @@ form.manual input{flex:1 1 180px;min-width:0;font-family:var(--mono);font-size:1
 .empty{background:var(--surface);border:1px dashed var(--line);border-radius:8px;padding:24px 18px;display:flex;flex-direction:column;gap:10px;align-items:flex-start}
 .note{font-size:13px;color:var(--muted)}
 
+/* home: the pasture */
+.pasture{position:relative;width:100%;aspect-ratio:192/240;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#9ED0E6}
+.pasture canvas{display:block;width:100%;height:100%;image-rendering:pixelated;cursor:pointer;touch-action:manipulation}
+.plabel{position:absolute;transform:translate(-50%,-100%);display:flex;align-items:center;gap:8px;white-space:nowrap;padding:5px 6px 5px 10px;border-radius:6px;
+  background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:0 2px 0 rgba(0,0,0,.12);font-size:12px;pointer-events:auto}
+.plabel b{font-family:var(--display);font-size:15px}
+.plabel span{font-weight:700}
+.plabel button{font-size:12px;font-weight:700;padding:3px 8px;border-radius:4px;border:0;background:var(--accent);color:var(--accent-ink);cursor:pointer}
+
 /* tab bar */
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:5;background:var(--surface);border-top:1px solid var(--line);
   padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));padding-bottom:env(safe-area-inset-bottom, 0px)}
-.tabs nav{max-width:520px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;height:var(--tabh)}
+.tabs nav{max-width:520px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr);height:var(--tabh)}
 .tabs a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-decoration:none;color:var(--muted);font-size:12px;font-weight:700}
 .tabs a svg{width:24px;height:24px}
 .tabs a[aria-current="page"]{color:var(--accent)}
