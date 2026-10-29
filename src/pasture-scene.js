@@ -255,12 +255,14 @@ function drawWater(ctx, t, x0, x1){
   }
 }
 
-/* ---------- particles: petals and seeds on the wind, falling leaves, splashes ---------- */
+/* ---------- particles: petals and seeds on the wind, falling leaves, splashes, hearts ---------- */
+const HEART = [css([350, 80, 62]), css([350, 90, 86])];
 function makeFx(){
   const ps = [];
   const petal = [css([60, 30, 97]), css([330, 60, 84]), css([50, 90, 80])], leaf = [css(hi(LEAF)), css(LEAF)], drop = css(WATER.glint);
   return {
     ping(x, y){ ps.push({k: 'ring', x, y, life: .7}); },
+    hearts(x, y, n = 3){ for(let i = 0; i < n; i++) ps.push({k: 'heart', x: x + (Math.random() - .5) * 12, y: y - Math.random() * 4, vx: (Math.random() - .5) * 6, life: 1 + Math.random() * .5 + i * .12, ph: Math.random() * 6}); },
     splash(x, y){ for(let i = 0; i < 6; i++) ps.push({k: 'drop', x, y, vx: (Math.random() - .5) * 26, vy: -14 - Math.random() * 16, life: .45, c: drop}); },
     step(dt, t){
       if(ps.length < 110 && Math.random() < dt * 3 * (.35 + 4 * gustAt(20, t))) ps.push({k: 'seed', x: Math.random() * W - 30, y: HZ + 6 + Math.random() * (H - HZ - 10), life: 12, ph: Math.random() * 6, c: petal[Math.floor(Math.random() * 3)]});
@@ -268,6 +270,7 @@ function makeFx(){
       for(const p of ps){
         p.life -= dt;
         if(p.k === 'ring') continue;
+        if(p.k === 'heart'){ p.y -= 9 * dt; p.x += (p.vx + Math.sin(t * 5 + p.ph) * 4) * dt; continue; }
         if(p.k === 'drop'){ p.vy += 90 * dt; p.x += p.vx * dt; p.y += p.vy * dt; }
         else if(p.k === 'seed'){ p.x += (5 + wind(p.x, t) * 18) * dt; p.y += Math.sin(t * 3 + p.ph) * 6 * dt + 1.2 * dt; if(p.x > W + 2) p.life = 0; }
         else { if(p.y < p.floor){ p.x += (wind(p.x, t) * 9 + Math.sin(t * 2 + p.ph) * 6) * dt; p.y += 7 * dt; } else if(p.life > 1) p.life = 1; }
@@ -280,6 +283,14 @@ function makeFx(){
           const k = 1 - p.life / .7, r = 2 + k * 7;
           ctx.fillStyle = `rgba(255,253,235,${(1 - k) * .9})`;
           for(let i = 0; i < 16; i++){ const a = i / 16 * Math.PI * 2; ctx.fillRect(Math.round(p.x + Math.cos(a) * r), Math.round(p.y + Math.sin(a) * r * .5), 1, 1); }
+          continue;
+        }
+        if(p.k === 'heart'){   // a little pixel heart that floats up and fades
+          const x = Math.round(p.x), y = Math.round(p.y);
+          ctx.globalAlpha = Math.min(1, p.life * 2);
+          ctx.fillStyle = HEART[0]; ctx.fillRect(x - 2, y - 1, 2, 2); ctx.fillRect(x + 1, y - 1, 2, 2); ctx.fillRect(x - 1, y + 1, 3, 1); ctx.fillRect(x, y + 2, 1, 1); ctx.fillRect(x - 2, y, 5, 1);
+          ctx.fillStyle = HEART[1]; ctx.fillRect(x - 1, y - 1, 1, 1);
+          ctx.globalAlpha = 1;
           continue;
         }
         ctx.fillStyle = p.c; ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1);
