@@ -289,9 +289,11 @@ function makeFx(){
 }
 const BUTTERFLIES = [[0, 60, 50, [50, 92, 72]], [2.4, 150, 110, [0, 0, 97]], [4.1, 40, 130, [22, 88, 62]], [1.2, 250, 70, [200, 80, 70]],
   [3.3, 310, 120, [50, 92, 72]], [5.0, 470, 60, [0, 0, 97]], [0.7, 580, 115, [22, 88, 62]]].map(([ph, cx, cy, c]) => ({ph, cx, cy: HZ + cy * .82, c: css(c)}));
+const butterflyAt = (b, t) => [Math.round(b.cx + 30 * Math.sin(t * .23 + b.ph) + 8 * Math.sin(t * .9 + b.ph * 2)), Math.round(b.cy + 10 * Math.sin(t * .31 + b.ph * 3) + 3 * Math.sin(t * 2.3 + b.ph))];
+const butterflies = t => BUTTERFLIES.map(b => butterflyAt(b, t));
 function drawButterflies(ctx, t){
   for(const b of BUTTERFLIES){
-    const x = Math.round(b.cx + 30 * Math.sin(t * .23 + b.ph) + 8 * Math.sin(t * .9 + b.ph * 2)), y = Math.round(b.cy + 10 * Math.sin(t * .31 + b.ph * 3) + 3 * Math.sin(t * 2.3 + b.ph));
+    const [x, y] = butterflyAt(b, t);
     const open = Math.floor(t * 7 + b.ph) % 2;
     ctx.fillStyle = b.c;
     if(open){ ctx.fillRect(x - 1, y - 1, 1, 2); ctx.fillRect(x + 1, y - 1, 1, 2); } else { ctx.fillRect(x - 1, y - 2, 1, 1); ctx.fillRect(x + 1, y - 2, 1, 1); }
@@ -302,5 +304,5 @@ function drawButterflies(ctx, t){
 let built = false;
 function build(){ if(!built){ buildProps(buildScene()); built = true; } }
 
-window.PastureScene = {W, H, HZ, clamp, css, WATER, isWater, sCx, sW, sL, sR, PROPS, build, drawSky, drawWater, makeFx, drawButterflies};
+window.PastureScene = {W, H, HZ, clamp, css, WATER, isWater, sCx, sW, sL, sR, TREES, PROPS, build, drawSky, drawWater, makeFx, drawButterflies, butterflies};
 })();
