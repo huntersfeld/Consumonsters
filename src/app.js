@@ -121,6 +121,8 @@ function tagHTML(t, entry){
     `${D.label}${t.element ? ' · ' + lab(t.element) : ''}`,
     SIZES[t.size].label,
     window.CMTemper.temperament(t.gtin, t.domain).word,
+    entry ? `<span class="hearts" title="Friendship">${window.CMBond.heartText(window.CMBond.hearts(t.gtin))}</span>` : null,
+    entry && window.CMBond.hearts(t.gtin) === window.CMBond.BEST ? '<span class="hot">Best friend</span>' : null,
     t.famHit ? 'Brand family' : null,
     t.donor ? `<span class="hot">+ ${DOMAINS[t.donor].label} parts</span>` : null,
     pal ? `<span class="hot">${pal}</span>` : null,
@@ -165,8 +167,10 @@ function hatch(raw){
   col[g] = isNew ? {first: now, last: now, count: 1} : {...col[g], last: now, count: col[g].count + 1};
   saveCol(); updateCount();
   const t = creature(g);
+  const bond = isNew ? null : window.CMBond.add(g, 'scan');
   show(g, {badge: isNew ? {text: 'New!'} : {text: `Caught before · ${col[g].count}×`, cls: 'dupe'}, animate: true});
   if(isNew && RANK.indexOf(t.rarity) >= RANK.indexOf('rare')) { const r = RARITY[t.rarity].label.toLowerCase(); status(`${/^[aeiou]/.test(r) ? 'An' : 'A'} ${r} find.`); }
+  if(bond && bond.gained) status(`${t.name} recognizes you.${bond.levelUp ? ' New heart!' : ''}`);
   $('#manual').hidden = true;
   if(location.hash !== '#scan' && location.hash) location.hash = 'scan';
   window.scrollTo({top:0, behavior:'auto'});

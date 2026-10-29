@@ -4,12 +4,15 @@
 'use strict';
 const {F, hash32, mulberry, render, RARITY} = window.CM;
 const {temperament} = window.CMTemper;
+const Bond = window.CMBond;
 const S = window.PastureScene;
 const {W, H, HZ, clamp, css, WATER, isWater, sCx, sW, sL, sR, TREES, PROPS} = S;
 const FOOT = F - 3, CXS = (F - 1) / 2;     // sprite foot row and centre column (GY and CX in engine.js)
 const Y0 = HZ + 22;                        // creatures stay in front of the fence
 const MIN_SCALE = 2;                       // screen pixels per scene pixel, at least; narrower screens pan instead of shrinking
 const SHADOW = 'rgba(16,40,12,.26)';
+const HEART_PULL = [0, .25, .35, .45, .55, .65];   // how much more likely a call is answered at 0..5 hearts
+let clock = 0, pointer = null;                     // pasture time, and where the finger or cursor last was (scene pixels)
 
 /* ---------- creatures ---------- */
 /* How each kind of feet gets around, as multipliers on the size-based hop: stride (distance per hop), hop time,
@@ -124,7 +127,7 @@ function claimSpot(c, dist){
 function nextHop(c){
   const dx = c.tx - c.x, dy = c.ty - c.y, dist = Math.hypot(dx, dy);
   if(!c.happy && dist < 2){
-    if(c.called){ c.called = false; c.happy = 1; c.linger = true; nextHop(c); return; }   // made it: a happy hop on arrival
+    if(c.called){ c.called = false; c.happy = 1; c.linger = true; c.arrived = clock; nextHop(c); return; }   // made it: a happy hop on arrival
     c.st = 'idle'; c.timer = c.mode ? .05 : c.linger ? 3 + Math.random() * 3 : (1 + Math.random() * 3.5) * c.gait.rest * c.restK; c.linger = false; return;
   }
   if(claimSpot(c, dist)){ nextHop(c); return; }
@@ -156,7 +159,7 @@ function call(mobs, x, y, t){
     const L = c.lastCall, again = L && t - L.t < 8 && Math.hypot(L.x - x, L.y - y) < 40;
     c.nag = again ? (c.nag || 0) + 1 : 0; c.lastCall = {x, y, t};
     const p = c.p, wasNapping = c.mode === 'nap' && c.nap > 0;
-    let come = clamp(.22 + .75 * p.boldness - .35 * (p.focus - .5) + .22 * c.nag, .08, .97);
+    let come = clamp(.22 + .75 * p.boldness - .35 * (p.focus - .5) + .22 * c.nag + HEART_PULL[Bond.hearts(c.g)], .08, .97);
     if(wasNapping) come *= .5;
     if(c.called) come = 1;   // already on its way
     if(Math.random() >= come){ if(!wasNapping) endMode(c); refuse(c, x, y, wasNapping); continue; }
@@ -209,6 +212,10 @@ function startSomething(c, w){
 }
 /* where a creature in a mode wants to go next; false ends the mode */
 function modeTarget(c, w){
+  if(c.mode === 'follow'){   // a good friend trots after your finger for a few seconds after a pet
+    if(w.t > c.until || !pointer) return false;
+    [c.tx, c.ty] = reachable(c, pointer.x, pointer.y + 6); return true;
+  }
   if(c.mode === 'chase'){
     if(w.t > c.until) return false;
     const b = w.butterflies.map(([x, y]) => ({x, y: y + 8})).sort((a, b2) => Math.hypot(a.x - c.x, a.y - c.y) - Math.hypot(b2.x - c.x, b2.y - c.y))[0];
@@ -299,13 +306,13 @@ function drawCreature(ctx, c, t){
   }
 }
 /* speech bubbles: tiny pixel glyphs over a creature's head */
-const GLYPHS = {'?': ['111', '001', '011', '000', '010'], '!': ['010', '010', '010', '000', '010'], '…': ['00000', '00000', '00000', '00000', '10101'], 'z': ['111', '001', '010', '100', '111']};
+const GLYPHS = {'♥': ['01010', '11111', '11111', '01110', '00100'], '?': ['111', '001', '011', '000', '010'], '!': ['010', '010', '010', '000', '010'], '…': ['00000', '00000', '00000', '00000', '10101'], 'z': ['111', '001', '010', '100', '111']};
 function drawBubble(ctx, c, t){
   const b = c.bubble, G = GLYPHS[b.k], w = G[0].length, rise = b.k === 'z' ? Math.round((1.6 - b.life) * 4) : 0;
   const x0 = Math.round(c.x) + (b.k === 'z' ? 3 : -Math.floor(w / 2)), y0 = Math.round(c.y) - FOOT - liftOf(c, t) + c.spr.y0 - 8 - rise;
   ctx.globalAlpha = Math.min(1, b.life * 3);
   ctx.fillStyle = 'rgba(255,253,240,.92)'; ctx.fillRect(x0 - 1, y0 - 1, w + 2, 7);
-  ctx.fillStyle = 'rgb(40,36,48)';
+  ctx.fillStyle = b.k === '♥' ? 'rgb(214,52,84)' : 'rgb(40,36,48)';
   G.forEach((row, y) => { for(let x = 0; x < w; x++) if(row[x] === '1') ctx.fillRect(x0 + x, y0 + y, 1, 1); });
   ctx.globalAlpha = 1;
 }
@@ -370,8 +377,12 @@ function create({canvas, label, faces, onOpen}){
     last = now; t += dt;
     if(goal !== null){ const d = goal - camX; if(Math.abs(d) < .5){ setCam(goal); goal = null; } else setCam(camX + d * Math.min(1, dt * 6)); }
     else if(!drag && Math.abs(vel) > 2){ setCam(camX + vel * dt); vel *= Math.pow(.03, dt); if(camX <= 0 || camX >= W - VW) vel = 0; }
+    clock = t;
     const w = {fx, mobs, t, butterflies: S.butterflies(t)};
     for(const c of mobs) stepCreature(c, dt, w);
+    for(const c of mobs) if(c.x > camX && c.x < camX + VW && (c.watched = (c.watched || 0) + dt) >= 60){   // a minute of watching it
+      c.watched = 0; const r = Bond.add(c.g, 'watch'); if(r.levelUp) cheer(c, r);
+    }
     fx.step(dt, t);
     frame();
   }
@@ -387,11 +398,47 @@ function create({canvas, label, faces, onOpen}){
     c.sel = true; endMode(c);
     if(!still && (c.st === 'idle' || c.st === 'glide')){ c.happy = 2; c.tx = c.x; c.ty = c.y; c.lift = 0; nextHop(c); }
     const R = RARITY[c.t.rarity];
-    label.innerHTML = `<b></b><i></i><span class="r-${c.t.rarity}">${R.label}</span><button type="button">View</button>`;
+    label.innerHTML = `<div><b></b><span class="r-${c.t.rarity}">${R.label}</span></div>
+      <div><i></i><span class="hearts"></span><button type="button" class="pet">Pet</button><button type="button" class="view">View</button></div>`;
     label.querySelector('b').textContent = c.t.name; label.querySelector('i').textContent = c.p.word;
-    label.querySelector('button').addEventListener('click', e => { e.stopPropagation(); onOpen(c.g); });
+    showHearts(c);
+    label.querySelector('.view').addEventListener('click', e => { e.stopPropagation(); onOpen(c.g); });
+    label.querySelector('.pet').addEventListener('click', e => { e.stopPropagation(); pet(c); });
     label.hidden = false; placeLabel();
     if(still) frame();
+  }
+  function showHearts(c){
+    const h = Bond.hearts(c.g), el = label.querySelector('.hearts');
+    if(!el) return;
+    el.textContent = Bond.heartText(h); el.setAttribute('aria-label', `${h} of 5 hearts`); el.title = h === Bond.BEST ? 'Best friends' : `${h} of 5 hearts`;
+  }
+  /* a pet: hearts float up, it does a happy hop, and good friends follow you around for a moment */
+  function pet(c){
+    const r = Bond.add(c.g, 'pet');
+    if(!r.cooling && c.arrived && t - c.arrived < 15){ const b = Bond.add(c.g, 'came'); r.gained += b.gained; r.levelUp = r.levelUp || b.levelUp; r.hearts = b.hearts; c.arrived = 0; }
+    const top = Math.round(c.y) - FOOT - liftOf(c, t) + c.spr.y0;
+    fx.hearts(c.x, top, r.cooling || !r.gained ? 1 : 3);
+    if(c.mode === 'nap') say(c, '!', .8);
+    endMode(c);
+    if(!still && (c.st === 'idle' || c.st === 'glide')){ c.happy = 2; c.tx = c.x; c.ty = c.y; c.lift = 0; nextHop(c); }
+    if(r.levelUp) cheer(c, r);
+    if(r.hearts >= 2 && !r.cooling && !still){ c.mode = 'follow'; c.until = t + 5; }
+    if(c === sel) showHearts(c);
+    if(still) frame();
+  }
+  function cheer(c, r){
+    say(c, '♥', 2.2); fx.hearts(c.x, Math.round(c.y) - FOOT + c.spr.y0, 7);
+    if(c === sel) showHearts(c);
+  }
+  /* opening the pasture: good friends say hello, and ones you haven't seen in a week are extra happy */
+  function greet(){
+    const now = Date.now();
+    for(const c of mobs){
+      const prev = Bond.seen(c.g, now), onScreen = c.x > camX && c.x < camX + VW;
+      if(still || !onScreen) continue;
+      const missed = prev && now - prev > 7 * 864e5, friend = Bond.hearts(c.g) >= 4 && (!prev || now - prev > 30 * 6e4);
+      if(missed || friend){ endMode(c); c.happy = missed ? 4 : 2; c.tx = c.x; c.ty = c.y; c.st = 'idle'; c.timer = Math.random() * .6; say(c, '♥', 2); }
+    }
   }
   function lookAt(c){
     const x = clamp(c.x - VW / 2, 0, W - VW);
@@ -400,14 +447,27 @@ function create({canvas, label, faces, onOpen}){
   }
 
   /* drag sideways to look around; a tap that doesn't move still calls creatures or picks one */
-  let drag = null, dragged = false;
+  let drag = null, dragged = false, hold = null;
+  const toScene = e => { const r = canvas.getBoundingClientRect(); return {x: Math.round(camX) + (e.clientX - r.left) / r.width * VW, y: (e.clientY - r.top) / r.height * H}; };
+  function hitAt({x: px, y: py}){
+    return mobs.slice().sort((a, b) => b.y - a.y).find(c => {
+      const lx = px - (Math.round(c.x) - Math.round(CXS + .5)), ly = py - (Math.round(c.y) - FOOT - liftOf(c, t));
+      return lx >= c.spr.x0 - 2 && lx <= c.spr.x1 + 3 && ly >= c.spr.y0 - 2 && ly <= c.spr.y1 + 3;
+    });
+  }
+  const cancelHold = () => { if(hold){ clearTimeout(hold.timer); hold = null; } };
   canvas.addEventListener('pointerdown', e => {
-    dragged = false;
+    dragged = false; cancelHold();
+    pointer = toScene(e);
+    const c = (e.pointerType !== 'mouse' || e.button === 0) && hitAt(pointer);
+    if(c) hold = {id: e.pointerId, x: e.clientX, y: e.clientY, timer: setTimeout(() => { hold = null; dragged = true; pet(c); }, 550)};   // press and hold to pet
     if(!pannable() || (e.pointerType === 'mouse' && e.button !== 0)) return;
     drag = {id: e.pointerId, x: e.clientX, cam: camX, moved: false, lx: e.clientX, lt: e.timeStamp};
     vel = 0; goal = null;
   });
   canvas.addEventListener('pointermove', e => {
+    pointer = toScene(e);
+    if(hold && e.pointerId === hold.id && Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > 6) cancelHold();
     if(!drag || e.pointerId !== drag.id) return;
     const dx = e.clientX - drag.x, k = VW / canvas.getBoundingClientRect().width;
     if(!drag.moved && Math.abs(dx) > 6){ drag.moved = true; canvas.setPointerCapture(e.pointerId); box.classList.add('dragging'); }
@@ -418,12 +478,14 @@ function create({canvas, label, faces, onOpen}){
     if(still || !raf) frame();
   });
   const endDrag = e => {
+    if(hold && e.pointerId === hold.id) cancelHold();
     if(!drag || e.pointerId !== drag.id) return;
     dragged = drag.moved;
     if(e.timeStamp - drag.lt > 80 || still) vel = 0;   // let go after holding still: no fling
     drag = null; box.classList.remove('dragging');
   };
   canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('contextmenu', e => e.preventDefault());   // a long press is a pet, not a menu
   canvas.addEventListener('pointercancel', e => { endDrag(e); vel = 0; });
   canvas.addEventListener('wheel', e => {   // sideways trackpad swipes and shift-scroll on desktop
     if(!pannable()) return;
@@ -436,11 +498,7 @@ function create({canvas, label, faces, onOpen}){
 
   canvas.addEventListener('click', e => {
     if(dragged){ dragged = false; return; }
-    const r = canvas.getBoundingClientRect(), px = Math.round(camX) + (e.clientX - r.left) / r.width * VW, py = (e.clientY - r.top) / r.height * H;
-    const hit = mobs.slice().sort((a, b) => b.y - a.y).find(c => {
-      const lx = px - (Math.round(c.x) - Math.round(CXS + .5)), ly = py - (Math.round(c.y) - FOOT - liftOf(c, t));
-      return lx >= c.spr.x0 - 2 && lx <= c.spr.x1 + 3 && ly >= c.spr.y0 - 2 && ly <= c.spr.y1 + 3;
-    });
+    const {x: px, y: py} = toScene(e), hit = hitAt({x: px, y: py});
     if(hit){ select(hit !== sel ? hit : null); return; }
     const hadSel = !!sel; select(null);
     if(still || hadSel) return;   // the first tap off a creature just closes its label
@@ -473,7 +531,7 @@ function create({canvas, label, faces, onOpen}){
       if(!placed) centreOnHerd();
       frame();
     },
-    start(){ fit(); if(!placed) centreOnHerd(); if(still){ frame(); return; } if(!raf){ last = performance.now(); raf = requestAnimationFrame(tick); } },
+    start(){ fit(); if(!placed) centreOnHerd(); if(still){ frame(); return; } if(!raf){ greet(); last = performance.now(); raf = requestAnimationFrame(tick); } },
     stop(){ if(raf) cancelAnimationFrame(raf); raf = 0; vel = 0; goal = null; select(null); },
   };
 }
