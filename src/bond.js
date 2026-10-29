@@ -12,7 +12,10 @@ const SOURCES = {
   came: {pts: 2, cap: 4},      // a pet soon after it answered your call
   watch: {pts: 1, cap: 5},     // a minute on screen while you watch the pasture
   scan: {pts: 5, cap: 5},      // scanning its barcode again: it recognizes you
+  play: {pts: 2, cap: 6},      // catching the ball
+  treat: {pts: 4, cap: 8},     // eating a treat you dropped; shy ones count it twice
 };
+const START_TREATS = 5, NEW_TREATS = 3;   // treats you begin with, and get for each new creature (one more for a rescan, once a day)
 const PET_COOLDOWN = 20e3;
 
 let data;
@@ -20,6 +23,7 @@ function load(){
   if(data) return data;
   try{ data = JSON.parse(localStorage.getItem(STORE)); }catch{ data = null; }
   if(!data || data.v !== 1) data = {v: 1, bond: {}};
+  if(typeof data.treats !== 'number') data.treats = START_TREATS;
   return data;
 }
 const save = () => { try{ localStorage.setItem(STORE, JSON.stringify(data)); }catch{} };
@@ -44,7 +48,24 @@ function add(g, source, now = Date.now()){
 function hearts(g){ const e = load().bond[g]; return e ? heartsFor(e.pts) : 0; }
 /* when you last saw it in the pasture; returns the previous time, then marks it seen now */
 function seen(g, now = Date.now()){ const e = entry(g), prev = e.seen; e.seen = now; save(); return prev; }
+/* treats: earned by scanning, spent in the pasture, sometimes brought to you by a good friend */
+const treats = () => load().treats;
+function earnTreats(g, isNew, now = Date.now()){
+  const e = entry(g), d = today(now);
+  let n = isNew ? NEW_TREATS : 0;
+  if(!isNew && e.treatDay !== d){ e.treatDay = d; n = 1; }
+  data.treats += n; save();
+  return n;
+}
+function useTreat(){ if(load().treats < 1) return false; data.treats--; save(); return true; }
+function giveTreat(){ load().treats++; save(); }
+/* a 3-heart friend brings you a gift at most once a day */
+function gift(g, now = Date.now()){
+  const e = entry(g), d = today(now);
+  if(heartsFor(e.pts) < 3 || e.giftDay === d) return false;
+  e.giftDay = d; save(); return true;
+}
 const heartText = h => '♥'.repeat(h) + '♡'.repeat(5 - h);
 
-root.CMBond = {LEVELS, SOURCES, add, hearts, seen, heartText, BEST: 5};
+root.CMBond = {LEVELS, SOURCES, add, hearts, seen, heartText, treats, earnTreats, useTreat, giveTreat, gift, BEST: 5};
 })(typeof window !== 'undefined' ? window : globalThis);
