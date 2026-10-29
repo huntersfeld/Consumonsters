@@ -53,9 +53,10 @@
   <section id="view-home" style="display:none;flex-direction:column;gap:12px">
     <h2 style="font-size:28px">Home</h2>
     <div class="pasture">
-      <canvas id="pasture" width="192" height="240" role="img" aria-label="A meadow with a stream where your creatures live"></canvas>
+      <canvas id="pasture" width="640" height="200" role="img" aria-label="A meadow with a stream where your creatures live"></canvas>
       <div class="plabel" id="plabel" hidden></div>
     </div>
+    <div class="pfaces" id="pfaces" role="group" aria-label="Jump to a creature" hidden></div>
     <p class="note" id="pasture-note"></p>
   </section>
 
@@ -87,6 +88,7 @@
 
 <script src="vendor/zxing-library-0.21.3.min.js"></script>
 <script src="src/engine.js"></script>
+<script src="src/pasture-scene.js"></script>
 <script src="src/pasture.js"></script>
 <script src="src/app.js"></script>
 </body>

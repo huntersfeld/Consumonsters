@@ -110,8 +110,15 @@ form.manual input{flex:1 1 180px;min-width:0;font-family:var(--mono);font-size:1
 .note{font-size:13px;color:var(--muted)}
 
 /* home: the pasture */
-.pasture{position:relative;width:100%;aspect-ratio:192/240;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#9ED0E6}
+/* the pasture breaks out of the app column and fills the window (up to 2400px); narrower screens drag to pan */
+.pasture{position:relative;align-self:center;width:max(100%, min(100vw - 48px, 2400px));max-width:none;aspect-ratio:640/200;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#9ED0E6}
 .pasture canvas{display:block;width:100%;height:100%;image-rendering:pixelated;cursor:pointer;touch-action:manipulation}
+.pasture.pan canvas{cursor:grab;touch-action:pan-y}
+.pasture.dragging canvas{cursor:grabbing}
+.pfaces{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 6px;scrollbar-width:thin}
+.pfaces button{flex:0 0 auto;width:40px;height:40px;padding:4px;display:flex;align-items:flex-end;justify-content:center;border-radius:6px;border:1px solid var(--line);background:var(--surface);cursor:pointer}
+.pfaces button[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.pfaces canvas{width:100%;height:100%;object-fit:contain;object-position:bottom;image-rendering:pixelated}
 .plabel{position:absolute;transform:translate(-50%,-100%);display:flex;align-items:center;gap:8px;white-space:nowrap;padding:5px 6px 5px 10px;border-radius:6px;
   background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:0 2px 0 rgba(0,0,0,.12);font-size:12px;pointer-events:auto}
 .plabel b{font-family:var(--display);font-size:15px}

@@ -211,10 +211,10 @@ function drawDex(){
 }
 
 /* ---------- home: the pasture ---------- */
-const PASTURE_MAX = 30;
+const PASTURE_MAX = 40;
 let pasture = null;
 function drawHome(){
-  if(!pasture) pasture = window.Pasture.create({canvas: $('#pasture'), label: $('#plabel'), onOpen: g => { show(g); location.hash = 'scan'; }});
+  if(!pasture) pasture = window.Pasture.create({canvas: $('#pasture'), label: $('#plabel'), faces: $('#pfaces'), onOpen: g => { show(g); location.hash = 'scan'; }});
   const all = Object.entries(col).sort((a,b) => b[1].last - a[1].last);
   pasture.setCreatures(all.slice(0, PASTURE_MAX).map(([g]) => ({g, t: creature(g)})));
   pasture.start();
