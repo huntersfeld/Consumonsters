@@ -116,6 +116,16 @@ form.manual input{flex:1 1 180px;min-width:0;font-family:var(--mono);font-size:1
 .pasture canvas{display:block;width:100%;height:100%;image-rendering:pixelated;cursor:pointer;touch-action:manipulation;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .pasture.pan canvas{cursor:grab;touch-action:pan-y}
 .pasture.dragging canvas{cursor:grabbing}
+.pasture.armed canvas{cursor:crosshair}
+.ptoast{position:absolute;left:50%;top:10px;transform:translateX(-50%);max-width:calc(100% - 20px);padding:6px 12px;border-radius:6px;background:var(--surface);color:var(--ink);border:1px solid var(--line);
+  box-shadow:0 2px 0 rgba(0,0,0,.12);font-size:13px;font-weight:700;pointer-events:none;text-align:center}
+.ptoys{display:flex;gap:8px;flex-wrap:wrap}
+.ptoys button{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:700;padding:7px 12px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.ptoys button[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);color:var(--accent)}
+.ptoys button span{font-family:var(--mono);font-size:12px;font-weight:500;color:var(--muted);font-variant-numeric:tabular-nums}
+.ptoys .ico{display:block;width:12px;height:12px;border-radius:50%}
+.ptoys .ico.ball{background:linear-gradient(#DE3C40 0 35%,#FFF6F0 35% 60%,#DE3C40 60%)}
+.ptoys .ico.treat{border-radius:3px;background:#D6963C;box-shadow:inset 3px 2px 0 #F6CC70}
 .pfaces{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 6px;scrollbar-width:thin}
 .pfaces button{flex:0 0 auto;width:40px;height:40px;padding:4px;display:flex;align-items:flex-end;justify-content:center;border-radius:6px;border:1px solid var(--line);background:var(--surface);cursor:pointer}
 .pfaces button[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}

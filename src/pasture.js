@@ -212,6 +212,22 @@ function startSomething(c, w){
 }
 /* where a creature in a mode wants to go next; false ends the mode */
 function modeTarget(c, w){
+  if(c.mode === 'fetch'){
+    const b = w.toys.ball;
+    if(!b || w.t > c.until || (b.holder && b.holder !== c)){ if(b && b.holder && b.holder !== c) say(c, '…', .9); return false; }
+    if(b.holder === c){
+      if(Math.hypot(c.tx - c.x, c.ty - c.y) < 3){ w.toys.drop(c); return false; }   // dropped it: at your feet if it's a good friend
+      return true;
+    }
+    if(!b.hops.length && Math.hypot(b.x - c.x, b.y - c.y) < 7){ w.toys.pickUp(c); return true; }
+    [c.tx, c.ty] = reachable(c, b.x, b.y); return true;
+  }
+  if(c.mode === 'treat'){
+    const tr = c.treat;
+    if(!tr || tr.eaten || w.t > c.until){ if(tr && tr.eaten && tr.by !== c) say(c, '…', .9); return false; }
+    if(!tr.falling && Math.hypot(tr.x - c.x, tr.y - c.y) < 6){ w.toys.eat(c, tr); return false; }
+    [c.tx, c.ty] = reachable(c, tr.x, tr.y); return true;
+  }
   if(c.mode === 'follow'){   // a good friend trots after your finger for a few seconds after a pet
     if(w.t > c.until || !pointer) return false;
     [c.tx, c.ty] = reachable(c, pointer.x, pointer.y + 6); return true;
@@ -305,6 +321,22 @@ function drawCreature(ctx, c, t){
     for(let x = fx - rx; x <= fx + rx; x++){ if((x + Math.floor(t * 4)) % 3 === 0) continue; ctx.fillStyle = css(WATER.foam); ctx.fillRect(x, wl, 1, 1); }
   }
 }
+const inWaterAt = (x, y) => { x = Math.round(x); y = Math.round(y); return y >= 0 && y < H && x >= 0 && x < W && !!isWater[y * W + x]; };
+/* a little red-and-white ball, with its shadow on the ground while it's loose */
+const BALL = ['rgb(222,60,64)', 'rgb(255,246,240)', 'rgb(150,30,40)'];
+function drawBall(ctx, x, y, z, shadow){
+  x = Math.round(x); y = Math.round(y); const top = y - 3 - Math.round(z);
+  if(shadow){ ctx.fillStyle = SHADOW; ctx.fillRect(x - 1, y, 3, 1); }
+  ctx.fillStyle = BALL[0]; ctx.fillRect(x - 1, top, 3, 3); ctx.fillRect(x - 2, top + 1, 5, 1);
+  ctx.fillStyle = BALL[1]; ctx.fillRect(x - 1, top + 1, 3, 1);
+  ctx.fillStyle = BALL[2]; ctx.fillRect(x + 1, top + 2, 1, 1);
+}
+/* a treat: a little golden biscuit */
+function drawTreat(ctx, tr){
+  const x = Math.round(tr.x), y = Math.round(tr.y), top = y - 2 - Math.round(tr.z);
+  if(!tr.falling || tr.z < 8){ ctx.fillStyle = SHADOW; ctx.fillRect(x - 1, y, 3, 1); }
+  ctx.fillStyle = 'rgb(214,150,60)'; ctx.fillRect(x - 1, top, 3, 2); ctx.fillStyle = 'rgb(246,204,112)'; ctx.fillRect(x - 1, top, 2, 1); ctx.fillStyle = 'rgb(150,90,36)'; ctx.fillRect(x + 1, top + 1, 1, 1);
+}
 /* speech bubbles: tiny pixel glyphs over a creature's head */
 const GLYPHS = {'♥': ['01010', '11111', '11111', '01110', '00100'], '?': ['111', '001', '011', '000', '010'], '!': ['010', '010', '010', '000', '010'], '…': ['00000', '00000', '00000', '00000', '10101'], 'z': ['111', '001', '010', '100', '111']};
 function drawBubble(ctx, c, t){
@@ -325,7 +357,7 @@ function faceOf(c){
 }
 
 /* ---------- the view ---------- */
-function create({canvas, label, faces, onOpen}){
+function create({canvas, label, faces, toys: tray, onOpen}){
   S.build();
   const ctx = canvas.getContext('2d'), box = canvas.parentElement;
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -364,8 +396,10 @@ function create({canvas, label, faces, onOpen}){
     const items = [];
     for(const p of PROPS) if(p.x > x0 - 8 && p.x < x1 + 8) items.push(p);
     for(const c of mobs) if(c.x + F / 2 > x0 && c.x - F / 2 < x1) items.push({y: c.y + .5, c});
+    if(ball && !ball.holder) items.push({y: ball.y + .4, draw: () => drawBall(ctx, ball.x, ball.y, ball.z, true)});
+    for(const tr of treatsOut) items.push({y: tr.y + .3, draw: () => drawTreat(ctx, tr)});
     items.sort((a, b) => a.y - b.y);
-    for(const it of items) it.c ? drawCreature(ctx, it.c, t) : it.draw(ctx, t);
+    for(const it of items){ if(it.c){ drawCreature(ctx, it.c, t); if(ball && ball.holder === it.c) drawBall(ctx, it.c.x, it.c.y - 3, liftOf(it.c, t) + 2, false); } else it.draw(ctx, t); }
     fx.draw(ctx); S.drawButterflies(ctx, t);
     for(const c of mobs) if(c.bubble && c.x + F / 2 > x0 && c.x - F / 2 < x1) drawBubble(ctx, c, t);
     if(sel) placeLabel();
@@ -378,7 +412,8 @@ function create({canvas, label, faces, onOpen}){
     if(goal !== null){ const d = goal - camX; if(Math.abs(d) < .5){ setCam(goal); goal = null; } else setCam(camX + d * Math.min(1, dt * 6)); }
     else if(!drag && Math.abs(vel) > 2){ setCam(camX + vel * dt); vel *= Math.pow(.03, dt); if(camX <= 0 || camX >= W - VW) vel = 0; }
     clock = t;
-    const w = {fx, mobs, t, butterflies: S.butterflies(t)};
+    stepToys(dt);
+    const w = {fx, mobs, t, butterflies: S.butterflies(t), toys};
     for(const c of mobs) stepCreature(c, dt, w);
     for(const c of mobs) if(c.x > camX && c.x < camX + VW && (c.watched = (c.watched || 0) + dt) >= 60){   // a minute of watching it
       c.watched = 0; const r = Bond.add(c.g, 'watch'); if(r.levelUp) cheer(c, r);
@@ -422,6 +457,7 @@ function create({canvas, label, faces, onOpen}){
     endMode(c);
     if(!still && (c.st === 'idle' || c.st === 'glide')){ c.happy = 2; c.tx = c.x; c.ty = c.y; c.lift = 0; nextHop(c); }
     if(r.levelUp) cheer(c, r);
+    if(!r.cooling && Math.random() < .35 && Bond.gift(c.g)){ Bond.giveTreat(); say(c, '♥', 2); toast(`${c.t.name} brought you a treat.`); updateToys(); }   // a 3-heart friend's gift
     if(r.hearts >= 2 && !r.cooling && !still){ c.mode = 'follow'; c.until = t + 5; }
     if(c === sel) showHearts(c);
     if(still) frame();
@@ -439,6 +475,102 @@ function create({canvas, label, faces, onOpen}){
       const missed = prev && now - prev > 7 * 864e5, friend = Bond.hearts(c.g) >= 4 && (!prev || now - prev > 30 * 6e4);
       if(missed || friend){ endMode(c); c.happy = missed ? 4 : 2; c.tx = c.x; c.ty = c.y; c.st = 'idle'; c.timer = Math.random() * .6; say(c, '♥', 2); }
     }
+  }
+  /* ---------- toys: a ball to throw and treats to drop ---------- */
+  let ball = null, armed = null, toastTimer = 0;
+  const treatsOut = [];
+  const toastEl = document.createElement('div'); toastEl.className = 'ptoast'; toastEl.hidden = true; toastEl.setAttribute('role', 'status'); box.appendChild(toastEl);
+  function toast(msg){ toastEl.textContent = msg; toastEl.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { toastEl.hidden = true; }, 2600); }
+  const toys = {
+    get ball(){ return ball; },
+    pickUp(c){
+      ball.holder = c; say(c, '!', .7);
+      const r = Bond.add(c.g, 'play'); if(r.levelUp) cheer(c, r);
+      for(const o of mobs) if(o !== c && o.mode === 'fetch'){ o.mode = null; say(o, '…', .9); }
+      if(Bond.hearts(c.g) >= 4) [c.tx, c.ty] = reachable(c, ball.home.x, ball.home.y);   // a good friend brings it back
+      else { const a = Math.random() * Math.PI * 2; [c.tx, c.ty] = reachable(c, c.x + Math.cos(a) * 40, c.y + Math.sin(a) * 24); }   // the rest run off with it for a bit
+    },
+    drop(c){
+      const back = Bond.hearts(c.g) >= 4;
+      ball.holder = null; ball.x = c.x + 4; ball.y = c.y + 1; ball.z = 0;
+      if(back){ fx.hearts(c.x, Math.round(c.y) - FOOT + c.spr.y0, 3); say(c, '♥', 1.6); }
+      c.happy = back ? 2 : 0; c.tx = c.x; c.ty = c.y;
+    },
+    eat(c, tr){
+      tr.eaten = true; tr.by = c; treatsOut.splice(treatsOut.indexOf(tr), 1);
+      let r = Bond.add(c.g, 'treat'); if(c.p.boldness < .35){ const r2 = Bond.add(c.g, 'treat'); r = {...r2, levelUp: r.levelUp || r2.levelUp}; }   // shy ones warm up fastest with treats
+      fx.hearts(c.x, Math.round(c.y) - FOOT + c.spr.y0, 3); say(c, '♥', 1.4);
+      if(r.levelUp) cheer(c, r);
+      c.happy = 2; c.tx = c.x; c.ty = c.y;
+    },
+  };
+  /* throw the ball from the bottom of the view to the tapped spot; it bounces twice and rolls to a stop */
+  function throwBall(x, y){
+    const fx0 = camX + VW / 2, fy0 = H - 2, d = Math.hypot(x - fx0, (y - fy0) * 1.4), ux = (x - fx0) / (d || 1), uy = (y - fy0) / (d || 1);
+    const hops = [{fx: fx0, fy: fy0, tx: x, ty: y, dur: .45 + d / 260, h: 12 + d * .12}];
+    for(const k of [.22, .08]){ const p = hops[hops.length - 1], s = d * k; hops.push({fx: p.tx, fy: p.ty, tx: p.tx + ux * s, ty: clamp(p.ty + uy * s * .6, Y0, H - 3), dur: .2 + k, h: p.h * .3}); }
+    if(ball && ball.holder){ const h = ball.holder; h.mode = null; }
+    ball = {x: fx0, y: fy0, z: 0, hops, t: 0, holder: null, home: {x: fx0, y: H - 8}, landed: false};
+    for(const c of mobs) if(c.mode === 'fetch') c.mode = null;
+  }
+  function dropTreat(x, y){
+    if(!Bond.useTreat()){ toast('No treats left. Scan barcodes to earn more.'); armed = null; updateToys(); return; }
+    const tr = {x, y, z: 18, falling: true};
+    treatsOut.push(tr); updateToys();
+  }
+  function stepToys(dt){
+    if(ball && !ball.holder && ball.hops.length){
+      const h = ball.hops[0]; ball.t += dt;
+      const p = Math.min(1, ball.t / h.dur);
+      ball.x = h.fx + (h.tx - h.fx) * p; ball.y = h.fy + (h.ty - h.fy) * p; ball.z = h.h * 4 * p * (1 - p);
+      if(p >= 1){
+        ball.hops.shift(); ball.t = 0; ball.z = 0;
+        if(inWaterAt(ball.x, ball.y)) fx.splash(ball.x, ball.y - 2);
+        if(!ball.landed){ ball.landed = true; noticeBall(); }
+      }
+    }
+    if(ball && !ball.holder && !ball.hops.length && inWaterAt(ball.x, ball.y)){   // it floats off down the stream
+      ball.y += 6 * dt; ball.x += (sCx(ball.y) - ball.x) * dt;
+      if(ball.y > H + 4) ball = null;
+    }
+    for(const tr of treatsOut) if(tr.falling){ tr.z -= 60 * dt; if(tr.z <= 0){ tr.z = 0; tr.falling = false; noticeTreat(tr); } }
+  }
+  /* who goes for it: playful ones chase the ball; bold and hungry ones go for a treat */
+  function noticeBall(){
+    for(const c of mobs){
+      if(c.sel || c.called || (c.mode === 'nap' && c.nap)) continue;
+      const d = Math.hypot(c.x - ball.x, (c.y - ball.y) / .6);
+      if(d > 160 || Math.random() > .25 + .65 * c.p.playfulness + .08 * Bond.hearts(c.g)) continue;
+      endMode(c); c.mode = 'fetch'; c.until = t + 10; c.wait = (.1 + Math.random() * .5) * c.gait.react;
+      say(c, '!', .8); if(c.st === 'idle'){ c.timer = c.wait; c.wait = 0; }
+    }
+  }
+  function noticeTreat(tr){
+    for(const c of mobs){
+      if(c.sel || c.called || (c.mode === 'nap' && c.nap) || c.mode === 'treat') continue;
+      const d = Math.hypot(c.x - tr.x, (c.y - tr.y) / .6);
+      if(d > 130 || Math.random() > .35 + .45 * c.p.boldness + .08 * Bond.hearts(c.g)) continue;
+      endMode(c); c.mode = 'treat'; c.treat = tr; c.until = t + 12; c.wait = (.2 + Math.random() * .6 + (1 - c.p.boldness)) * c.gait.react;
+      if(c.st === 'idle'){ c.timer = c.wait; c.wait = 0; }
+    }
+  }
+  /* the toy tray under the pasture: pick a toy, then tap the grass to use it */
+  function updateToys(){
+    if(!tray) return;
+    tray.hidden = still || !mobs.length;
+    for(const b of tray.querySelectorAll('button')) b.setAttribute('aria-pressed', String(armed === b.dataset.toy));
+    const n = tray.querySelector('[data-toy="treat"] span'); if(n) n.textContent = Bond.treats();
+    box.classList.toggle('armed', !!armed);
+  }
+  if(tray){
+    tray.innerHTML = '<button type="button" data-toy="ball"><i class="ico ball"></i>Ball</button><button type="button" data-toy="treat"><i class="ico treat"></i>Treat <span></span></button>';
+    tray.addEventListener('click', e => {
+      const b = e.target.closest('button'); if(!b) return;
+      armed = armed === b.dataset.toy ? null : b.dataset.toy;
+      if(armed === 'treat' && Bond.treats() < 1){ toast('No treats left. Scan barcodes to earn more.'); armed = null; }
+      else if(armed) toast(armed === 'ball' ? 'Tap the grass to throw the ball.' : 'Tap the grass to drop a treat.');
+      select(null); updateToys();
+    });
   }
   function lookAt(c){
     const x = clamp(c.x - VW / 2, 0, W - VW);
@@ -499,6 +631,7 @@ function create({canvas, label, faces, onOpen}){
   canvas.addEventListener('click', e => {
     if(dragged){ dragged = false; return; }
     const {x: px, y: py} = toScene(e), hit = hitAt({x: px, y: py});
+    if(armed && !still){ select(null); if(armed === 'ball') throwBall(px, clamp(py, Y0, H - 3)); else { dropTreat(px, clamp(py, Y0, H - 3)); if(Bond.treats() < 1){ armed = null; updateToys(); } } return; }   // holding a toy: every tap uses it
     if(hit){ select(hit !== sel ? hit : null); return; }
     const hadSel = !!sel; select(null);
     if(still || hadSel) return;   // the first tap off a creature just closes its label
@@ -527,7 +660,7 @@ function create({canvas, label, faces, onOpen}){
       byG = next; mobs = [...next.values()];
       if(sel && !byG.has(sel.g)) select(null);
       if(changed) buildFaces();
-      fit();
+      fit(); updateToys();
       if(!placed) centreOnHerd();
       frame();
     },

@@ -170,7 +170,9 @@ function hatch(raw){
   const bond = isNew ? null : window.CMBond.add(g, 'scan');
   show(g, {badge: isNew ? {text: 'New!'} : {text: `Caught before · ${col[g].count}×`, cls: 'dupe'}, animate: true});
   if(isNew && RANK.indexOf(t.rarity) >= RANK.indexOf('rare')) { const r = RARITY[t.rarity].label.toLowerCase(); status(`${/^[aeiou]/.test(r) ? 'An' : 'A'} ${r} find.`); }
-  if(bond && bond.gained) status(`${t.name} recognizes you.${bond.levelUp ? ' New heart!' : ''}`);
+  const treats = window.CMBond.earnTreats(g, isNew), got = treats ? ` +${treats} treat${treats > 1 ? 's' : ''} for the pasture.` : '';
+  if(bond && bond.gained) status(`${t.name} recognizes you.${bond.levelUp ? ' New heart!' : ''}${got}`);
+  else if(got && !(isNew && RANK.indexOf(t.rarity) >= RANK.indexOf('rare'))) status(got.trim());
   $('#manual').hidden = true;
   if(location.hash !== '#scan' && location.hash) location.hash = 'scan';
   window.scrollTo({top:0, behavior:'auto'});
@@ -219,7 +221,7 @@ function drawDex(){
 const PASTURE_MAX = 40;
 let pasture = null;
 function drawHome(){
-  if(!pasture) pasture = window.Pasture.create({canvas: $('#pasture'), label: $('#plabel'), faces: $('#pfaces'), onOpen: g => { show(g); location.hash = 'scan'; }});
+  if(!pasture) pasture = window.Pasture.create({canvas: $('#pasture'), label: $('#plabel'), faces: $('#pfaces'), toys: $('#ptoys'), onOpen: g => { show(g); location.hash = 'scan'; }});
   const all = Object.entries(col).sort((a,b) => b[1].last - a[1].last);
   pasture.setCreatures(all.slice(0, PASTURE_MAX).map(([g]) => ({g, t: creature(g)})));
   pasture.start();

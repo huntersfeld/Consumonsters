@@ -50,3 +50,24 @@ test('progress is saved in its own key, apart from the collection', () => {
   assert.deepEqual([...store.keys()], ['consumonsters.pasture.v1']);
   assert.equal(JSON.parse(store.get('consumonsters.pasture.v1')).bond.x.pts, 5);
 });
+
+test('treats: a starting stash, three per new creature, one per rescan a day', () => {
+  const {B} = loadBond();
+  assert.equal(B.treats(), 5);
+  assert.equal(B.earnTreats('x', true, T0), 3);
+  assert.equal(B.earnTreats('x', false, T0), 1);
+  assert.equal(B.earnTreats('x', false, T0 + 1e3), 0);
+  assert.equal(B.earnTreats('x', false, T0 + DAY), 1);
+  assert.equal(B.treats(), 10);
+  for(let i = 0; i < 10; i++) assert.ok(B.useTreat());
+  assert.equal(B.useTreat(), false);
+});
+
+test('a gift comes only from a 3-heart friend, once a day', () => {
+  const {B} = loadBond();
+  assert.equal(B.gift('x', T0), false);
+  for(let d = 0; d < 4; d++) for(const s of ['scan', 'treat', 'treat', 'play', 'play', 'play']) B.add('x', s, T0 + d * DAY);
+  assert.ok(B.hearts('x') >= 3);
+  assert.ok(B.gift('x', T0 + 3 * DAY));
+  assert.equal(B.gift('x', T0 + 3 * DAY + 1e3), false);
+});
