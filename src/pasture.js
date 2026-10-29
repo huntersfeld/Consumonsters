@@ -11,6 +11,21 @@ const MIN_SCALE = 2;                       // screen pixels per scene pixel, at 
 const SHADOW = 'rgba(16,40,12,.26)';
 
 /* ---------- creatures ---------- */
+/* How each kind of feet gets around, as multipliers on the size-based hop: stride (distance per hop), hop time,
+   hop height, the pauses before and after a hop, rests between wanders, how quickly it reacts to a call, and how
+   much farther it goes per hop in water. Floaters glide instead, at their own drift speed. */
+const GAITS = {
+  insect_legs: {stride: .7, hopT: .45, hopH: .5, pause: .5, rest: .6, react: .5},   // scurry: many tiny quick hops
+  thin: {stride: .9, hopT: .7, hopH: 1.1, pause: .7, rest: .8, react: .7},           // skip
+  hooves: {stride: 1.6, hopT: 1.3, hopH: 1.9, pause: 1.2, rest: 1.1, react: .9},     // bound: big springy hops
+  stubby: {}, claws: {},                                                             // waddle: the standard hop
+  webbed: {stride: .7, hopT: 1.1, hopH: .7, rest: 1.1, react: 1.1, water: 1.8},     // slow on land, quick in water
+  coil: {stride: .9, hopT: 1.2, hopH: .2, pause: .5, react: .9},                     // slither: low and flat
+  tentacles: {stride: .55, hopT: 1.3, hopH: .5, pause: 1.3, rest: 1.3, react: 1.2, water: 2.2},
+  roots: {stride: .4, hopT: 1.1, hopH: .45, pause: 1.6, rest: 2, react: 1.6},        // shuffle, with long rests
+  float: {react: 1},
+};
+const gaitOf = t => ({stride: 1, hopT: 1, hopH: 1, pause: 1, rest: 1, react: 1, water: 1, ...GAITS[t.feet]});
 function makeSprite(t){
   const cv = document.createElement('canvas'); render(cv, t, {scale: 1});
   const ctx = cv.getContext('2d'), img = ctx.getImageData(0, 0, F, F), d = img.data;
@@ -44,7 +59,9 @@ function newCreature(g, t){
     st: 'idle', timer: r() * 3, lift: 0, ph: r() * 4, happy: 0, x: 0, y: 0};
   c.bank = r() < sCx(Y0) / W ? 0 : 1;   // walkers live on one bank, picked in proportion to its width
   const size = spr.y1 - spr.y0 + 1;
-  c.stride = 7 + size * .22; c.hopH = 3 + Math.max(0, 32 - size) * .2; c.hopT = .3 + size * .006;
+  const G = c.gait = gaitOf(t), pep = .85 + r() * .3;   // pep: two creatures with the same feet still differ a little
+  c.stride = (7 + size * .22) * G.stride * pep; c.hopH = (3 + Math.max(0, 32 - size) * .2) * G.hopH; c.hopT = (.3 + size * .006) * G.hopT / pep;
+  c.drift = (5 + r() * 4) * (1.2 - size / 80);   // floaters' glide speed, in scene pixels a second; smaller ones are quicker
   for(let i = 0; i < 60; i++){ c.x = 6 + r() * (W - 12); c.y = Y0 + r() * (H - 3 - Y0); if(walkable(c, c.x, c.y)) break; }
   if(!walkable(c, c.x, c.y)){ c.bank = 0; c.x = 40; c.y = (Y0 + H) / 2; }
   return c;
@@ -81,14 +98,23 @@ function flyAcross(c, dx, dy, dist){
   }
   return null;
 }
+/* nearly there after a call: take the next free spot around it, so spots go in order of arrival */
+function claimSpot(c, dist){
+  if(!c.called || !c.call || c.slot || dist >= c.call.r() + (c.floater ? 4 : c.stride)) return false;
+  const i = c.call.n++, a = i * 2.4, r = c.call.ring(i);
+  c.slot = true; [c.tx, c.ty] = reachable(c, c.call.x + Math.cos(a) * r, c.call.y + Math.sin(a) * r * .6);
+  return true;
+}
 function nextHop(c){
   const dx = c.tx - c.x, dy = c.ty - c.y, dist = Math.hypot(dx, dy);
   if(!c.happy && dist < 2){
     if(c.called){ c.called = false; c.happy = 1; c.linger = true; nextHop(c); return; }   // made it: a happy hop on arrival
-    c.st = 'idle'; c.timer = c.linger ? 3 + Math.random() * 3 : 1 + Math.random() * 3.5; c.linger = false; return;
+    c.st = 'idle'; c.timer = c.linger ? 3 + Math.random() * 3 : (1 + Math.random() * 3.5) * c.gait.rest; c.linger = false; return;
   }
+  if(claimSpot(c, dist)){ nextHop(c); return; }
   if(c.floater && !c.happy){ c.st = 'glide'; return; }
-  const k = c.happy ? 0 : Math.min(1, c.stride / dist);
+  const stride = c.stride * (c.move === 'swim' && inWater(c) ? c.gait.water : 1);
+  const k = c.happy ? 0 : Math.min(1, stride / dist);
   let nx = c.x + dx * k, ny = c.y + dy * k;
   if(!c.happy && c.move === 'fly' && !walkable(c, nx, ny)){
     const j = flyAcross(c, dx, dy, dist);
@@ -98,35 +124,44 @@ function nextHop(c){
   if(c.called && Math.hypot(nx - c.x, ny - c.y) < .5){ c.called = false; c.st = 'idle'; c.timer = 3; return; }   // as close as it can get
   if(!c.happy && !walkable(c, nx, ny)){ c.called = false; c.st = 'idle'; c.timer = 1 + Math.random() * 2; return; }
   c.hop = {fx: c.x, fy: c.y, tx: nx, ty: ny, dur: c.happy ? .4 : c.hopT, h: c.happy ? 9 : c.hopH};
-  c.st = 'crouch'; c.timer = c.called ? .05 : .08;
+  c.st = 'crouch'; c.timer = (c.called ? .05 : .08) * c.gait.pause;
 }
-/* "come here!": creatures near the tapped spot head over, the closest first; farther ones may not bother,
-   and ones on the far side of the meadow don't hear it */
+/* "come here!": creatures near the tapped spot head over, each after its own moment to notice; farther ones may
+   not bother, and ones on the far side of the meadow don't hear it. Spots around the call go in order of arrival. */
 function call(mobs, x, y){
-  const near = mobs.map(c => ({c, d: Math.hypot(c.x - x, (c.y - y) / .6)})).filter(({d}) => d < 110 || (d < 220 && Math.random() < .4)).sort((a, b) => a.d - b.d);
-  near.forEach(({c, d}, i) => {
-    const a = i * 2.4, r = i ? 6 + 7 * Math.sqrt(i) : 0;   // spread them around the spot so they don't pile up
-    [c.tx, c.ty] = reachable(c, x + Math.cos(a) * r, y + Math.sin(a) * r * .6);
-    c.called = true; c.linger = false; c.happy = 0;
-    if(c.st === 'idle'){ c.timer = .1 + d * .004 + Math.random() * .2; }
-  });
+  const spot = {x, y, n: 0, ring: i => i ? 9 + 10 * Math.sqrt(i) : 0, r(){ return this.ring(this.n) + 4; }};
+  for(const c of mobs){
+    const d = Math.hypot(c.x - x, (c.y - y) / .6);
+    if(!(d < 110 || (d < 220 && Math.random() < .4))) continue;
+    [c.tx, c.ty] = reachable(c, x, y);
+    c.called = true; c.call = spot; c.slot = false; c.linger = false; c.happy = 0;
+    c.wait = (.15 + Math.random() * .9 + d * .004) * c.gait.react;   // how long before it notices
+    if(c.st === 'idle' || c.st === 'glide'){ c.st = 'idle'; c.timer = c.wait; c.wait = 0; }
+  }
 }
 function stepCreature(c, dt, fx){
   switch(c.st){
     case 'idle':
       c.timer -= dt;
-      if(c.timer <= 0){ if(c.called || (!c.sel && Math.random() < .75 && pickTarget(c))) nextHop(c); else c.timer = 1 + Math.random() * 3; }
+      if(c.timer <= 0){ if(c.called || (!c.sel && Math.random() < .75 && pickTarget(c))) nextHop(c); else c.timer = (1 + Math.random() * 3) * c.gait.rest; }
       break;
     case 'crouch': c.timer -= dt; if(c.timer <= 0){ c.st = 'air'; c.timer = 0; } break;
     case 'air': {
       c.timer += dt; const p = Math.min(1, c.timer / c.hop.dur), h = c.hop;
       c.x = h.fx + (h.tx - h.fx) * p; c.y = h.fy + (h.ty - h.fy) * p; c.lift = Math.round(h.h * 4 * p * (1 - p));
-      if(p >= 1){ c.lift = 0; c.st = 'land'; c.timer = .1; if(c.happy) c.happy--; if(inWater(c)) fx.splash(c.x, c.y - 3); }
+      if(p >= 1){ c.lift = 0; c.st = 'land'; c.timer = .1 * c.gait.pause; if(c.happy) c.happy--; if(inWater(c)) fx.splash(c.x, c.y - 3); }
       break;
     }
-    case 'land': c.timer -= dt; if(c.timer <= 0){ if(c.happy) nextHop(c); else if(c.sel){ c.st = 'idle'; c.timer = 1; } else nextHop(c); } break;
+    case 'land':
+      c.timer -= dt;
+      if(c.timer > 0) break;
+      if(c.happy) nextHop(c); else if(c.sel){ c.st = 'idle'; c.timer = 1; }
+      else if(c.wait){ c.st = 'idle'; c.timer = c.wait; c.wait = 0; }   // heard a call mid-hop: it takes a moment to turn round
+      else nextHop(c);
+      break;
     case 'glide': {
-      const dx = c.tx - c.x, dy = c.ty - c.y, dist = Math.hypot(dx, dy), v = (c.called ? 14 : 7) * dt;
+      claimSpot(c, Math.hypot(c.tx - c.x, c.ty - c.y));
+      const dx = c.tx - c.x, dy = c.ty - c.y, dist = Math.hypot(dx, dy), v = c.drift * (c.called ? 2 : 1) * dt;
       if(dist <= v || c.sel){ c.st = 'idle'; c.timer = c.called ? 3 + Math.random() * 3 : 1 + Math.random() * 3; c.called = false; break; }
       c.x += dx / dist * v; c.y += dy / dist * v;
       break;
