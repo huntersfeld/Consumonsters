@@ -1,6 +1,6 @@
 // Offline support: cache the app shell, serve it cache-first, and refresh it in the background.
 // Bump VERSION whenever a shipped file changes so phones pick up the new build.
-const VERSION = 'consumonsters-v9';
+const VERSION = 'consumonsters-v10';
 const SHELL = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'src/engine.js', 'src/personality.js', 'src/bond.js', 'src/pasture-scene.js', 'src/pasture.js', 'src/app.js', 'vendor/zxing-library-0.21.3.min.js',
