@@ -34,8 +34,9 @@ Phones only allow the camera over HTTPS, so to test scanning on a phone use the 
 | --- | --- |
 | `src/engine.js` | The creature generator from the design spec: barcode to traits to sprite. Seed version `cm-v1`. |
 | `src/app.js` | Scanning (live camera, photo or typed), the hatch screen and the collection. |
+| `src/personality.js` | Each creature's temperament (energy, boldness, sociability, playfulness, focus, and one word such as Shy or Zippy), rolled from its own seed so looks never change. Frozen once shipped, like the generator. |
 | `src/pasture-scene.js` | The Home tab's scenery: a wide pixel meadow (640 × 200) with a winding stream, two trees, a fence and grass that blows in the wind. |
-| `src/pasture.js` | The creatures in the meadow and the view onto it. Creatures get around in a way that fits their feet (six legs scurry, hooves bound, roots shuffle, floaters drift); tap empty grass to call them over, and they notice and arrive one by one. Floaters drift over the stream, aquatic creatures swim it and winged ones hop across; the rest stay on their own bank. The pasture fills a desktop window; on narrower screens you drag sideways to look around, or tap a face in the row below to jump to that creature. It only draws creatures, so it never changes them. |
+| `src/pasture.js` | The creatures in the meadow and the view onto it. Creatures get around in a way that fits their feet (six legs scurry, hooves bound, roots shuffle, floaters drift); tap empty grass to call them over, and they notice and arrive one by one. Whether one comes depends on its personality: shy ones back off, stubborn ones stay put, and calling again wins some over. Left alone they nap under trees, chase butterflies, play tag and wander over to friends. Floaters drift over the stream, aquatic creatures swim it and winged ones hop across; the rest stay on their own bank. The pasture fills a desktop window; on narrower screens you drag sideways to look around, or tap a face in the row below to jump to that creature. It only draws creatures, so it never changes them. |
 | `vendor/zxing-library-0.21.3.min.js` | Barcode decoding for browsers without the built-in BarcodeDetector, such as iPhone Safari. Apache 2.0. |
 | `sw.js`, `manifest.webmanifest`, `icons/` | What makes it installable and work offline. |
 | `tests/` | Locks the generator so creatures can't change by accident. |
@@ -44,6 +45,6 @@ A barcode is normalized to a 14-digit GTIN (UPC-E is expanded first), checked ag
 
 ## The generator is frozen
 
-Changing any weight, option or palette in `src/engine.js` changes creatures people have already caught. The tests fail if that happens. New content should ship under a new seed version (`cm-v2`) rather than by editing `cm-v1`. Only regenerate `tests/golden.json` (`node tests/make-golden.mjs`) as part of a deliberate new seed version.
+Changing any weight, option or palette in `src/engine.js` changes creatures people have already caught. The tests fail if that happens. New content should ship under a new seed version (`cm-v2`) rather than by editing `cm-v1`. Only regenerate `tests/golden.json` (`node tests/make-golden.mjs`) as part of a deliberate new seed version. Personalities are locked the same way by `tests/personality-golden.json`.
 
 When you change any shipped file, bump `VERSION` in `sw.js` so installed copies update.

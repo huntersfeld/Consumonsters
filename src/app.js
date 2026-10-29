@@ -120,6 +120,7 @@ function tagHTML(t, entry){
   const facts = [
     `${D.label}${t.element ? ' · ' + lab(t.element) : ''}`,
     SIZES[t.size].label,
+    window.CMTemper.temperament(t.gtin, t.domain).word,
     t.famHit ? 'Brand family' : null,
     t.donor ? `<span class="hot">+ ${DOMAINS[t.donor].label} parts</span>` : null,
     pal ? `<span class="hot">${pal}</span>` : null,
