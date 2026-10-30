@@ -190,8 +190,8 @@ function endMode(c){
 
 /* things that play out on their own: naps under a tree, butterfly chases, tag between friends, splashing about */
 function startSomething(c, w){
-  const p = c.p, R = Math.random();
-  if(p.energy < .4 && R < (1 - p.energy) * .12){   // a nap, under the nearest tree it can reach
+  const p = c.p, R = Math.random(), n = w.night;
+  if(p.energy < .4 + .45 * n && R < (1 - p.energy) * (.12 + .3 * n)){   // a nap, under the nearest tree it can reach; most of them doze off at night
     const tr = TREES.map(tr => reachable(c, tr.x + (Math.random() - .5) * 18, tr.y + 6)).find(([x, y]) => Math.hypot(x - c.x, y - c.y) < 170 && walkable(c, x, y));
     c.mode = 'nap'; c.nap = 0;
     if(tr){ [c.tx, c.ty] = tr; } else { c.tx = c.x; c.ty = c.y; }
@@ -266,11 +266,11 @@ function stepCreature(c, dt, w){
       }
       if(c.timer > 0) break;
       if(c.called) nextHop(c);
-      else if(c.mode === 'nap'){ if(Math.hypot(c.tx - c.x, c.ty - c.y) < 2){ c.nap = 10 + Math.random() * 12; say(c, 'z', 1.6); } else nextHop(c); }
+      else if(c.mode === 'nap'){ if(Math.hypot(c.tx - c.x, c.ty - c.y) < 2){ c.nap = (10 + Math.random() * 12) * (1 + 1.5 * w.night); say(c, 'z', 1.6); } else nextHop(c); }
       else if(c.mode){ if(modeTarget(c, w)) nextHop(c); else { c.mode = null; c.timer = 1; } }
       else if(!c.sel && startSomething(c, w)) nextHop(c);
-      else if(!c.sel && Math.random() < .45 + .45 * c.p.energy && pickTarget(c, w.mobs)) nextHop(c);
-      else c.timer = (1 + Math.random() * 3) * c.gait.rest * c.restK;
+      else if(!c.sel && Math.random() < (.45 + .45 * c.p.energy) * (1 - .5 * w.night) && pickTarget(c, w.mobs)) nextHop(c);
+      else c.timer = (1 + Math.random() * 3) * c.gait.rest * c.restK * (1 + w.night);   // fewer hops after dark
       break;
     case 'crouch': c.timer -= dt; if(c.timer <= 0){ c.st = 'air'; c.timer = 0; } break;
     case 'air': {
@@ -343,9 +343,14 @@ function drawBubble(ctx, c, t){
   const b = c.bubble, G = GLYPHS[b.k], w = G[0].length, rise = b.k === 'z' ? Math.round((1.6 - b.life) * 4) : 0;
   const x0 = Math.round(c.x) + (b.k === 'z' ? 3 : -Math.floor(w / 2)), y0 = Math.round(c.y) - FOOT - liftOf(c, t) + c.spr.y0 - 8 - rise;
   ctx.globalAlpha = Math.min(1, b.life * 3);
-  ctx.fillStyle = 'rgba(255,253,240,.92)'; ctx.fillRect(x0 - 1, y0 - 1, w + 2, 7);
-  ctx.fillStyle = b.k === '♥' ? 'rgb(214,52,84)' : 'rgb(40,36,48)';
-  G.forEach((row, y) => { for(let x = 0; x < w; x++) if(row[x] === '1') ctx.fillRect(x0 + x, y0 + y, 1, 1); });
+  const dot = (dx, dy) => G.forEach((row, y) => { for(let x = 0; x < w; x++) if(row[x] === '1') ctx.fillRect(x0 + x + dx, y0 + y + dy, 1, 1); });
+  if(b.k === 'z'){   // sleep: a plain white z, with a faint shadow so it still reads against a pale sky
+    ctx.fillStyle = 'rgba(20,24,48,.35)'; dot(1, 1);
+    ctx.fillStyle = 'rgb(255,255,255)'; dot(0, 0);
+  } else {
+    ctx.fillStyle = 'rgba(255,253,240,.92)'; ctx.fillRect(x0 - 1, y0 - 1, w + 2, 7);
+    ctx.fillStyle = b.k === '♥' ? 'rgb(214,52,84)' : 'rgb(40,36,48)'; dot(0, 0);
+  }
   ctx.globalAlpha = 1;
 }
 /* a little face for the jump-to row: the sprite's top half, cropped to its outline */
@@ -387,20 +392,43 @@ function create({canvas, label, faces, toys: tray, onOpen}){
     setCam(xs[xs.length >> 1] - VW / 2); placed = true;
   }
 
+  /* the light follows this device's clock; ?hour=21 (or setHour) previews any time of day */
+  const fixed = Number.parseFloat(new URLSearchParams(location.search).get('hour'));
+  let hourSet = Number.isFinite(fixed) ? fixed : null, lt = null, ltAt = -1e9;
+  const hourNow = () => { if(hourSet !== null) return hourSet; const d = new Date(); return d.getHours() + d.getMinutes() / 60; };
+  const light = () => { if(!lt || t - ltAt > 30){ lt = S.lightAt(hourNow()); ltAt = t; } return lt; };
+  let O = null, M = null;   // offscreen layers for the colour grade
+  function graded(){
+    if(!O || O.width !== VW){ O = document.createElement('canvas'); M = document.createElement('canvas'); O.width = M.width = VW; O.height = M.height = H; }
+    return O.getContext('2d');
+  }
   function frame(){
-    const x0 = Math.round(camX), x1 = x0 + VW;
+    const x0 = Math.round(camX), x1 = x0 + VW, L = light();
     ctx.setTransform(1, 0, 0, 1, -x0, 0);
     ctx.imageSmoothingEnabled = false;
-    S.drawSky(ctx, t);
-    S.drawWater(ctx, t, x0, x1);
+    S.drawSky(ctx, t, L);
+    // everything under the sky is drawn into its own layer when there's a colour grade, so the light can tint it
+    const g = L.graded ? graded() : ctx;
+    if(g !== ctx){ g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, VW, H); g.setTransform(1, 0, 0, 1, -x0, 0); g.imageSmoothingEnabled = false; }
+    S.drawLand(g, t, L);
+    S.drawWater(g, t, x0, x1);
     const items = [];
     for(const p of PROPS) if(p.x > x0 - 8 && p.x < x1 + 8) items.push(p);
     for(const c of mobs) if(c.x + F / 2 > x0 && c.x - F / 2 < x1) items.push({y: c.y + .5, c});
-    if(ball && !ball.holder) items.push({y: ball.y + .4, draw: () => drawBall(ctx, ball.x, ball.y, ball.z, true)});
-    for(const tr of treatsOut) items.push({y: tr.y + .3, draw: () => drawTreat(ctx, tr)});
+    if(ball && !ball.holder) items.push({y: ball.y + .4, draw: () => drawBall(g, ball.x, ball.y, ball.z, true)});
+    for(const tr of treatsOut) items.push({y: tr.y + .3, draw: () => drawTreat(g, tr)});
     items.sort((a, b) => a.y - b.y);
-    for(const it of items){ if(it.c){ drawCreature(ctx, it.c, t); if(ball && ball.holder === it.c) drawBall(ctx, it.c.x, it.c.y - 3, liftOf(it.c, t) + 2, false); } else it.draw(ctx, t); }
-    fx.draw(ctx); S.drawButterflies(ctx, t);
+    for(const it of items){ if(it.c){ drawCreature(g, it.c, t); if(ball && ball.holder === it.c) drawBall(g, it.c.x, it.c.y - 3, liftOf(it.c, t) + 2, false); } else it.draw(g, t); }
+    fx.draw(g); S.drawButterflies(g, t, L);
+    if(g !== ctx){   // multiply by the light, keep the layer's own shape, then lay it over the sky
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      const m = M.getContext('2d'); m.globalCompositeOperation = 'copy'; m.drawImage(O, 0, 0);
+      g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgb(${L.tint})`; g.fillRect(0, 0, VW, H);
+      g.globalCompositeOperation = 'destination-in'; g.drawImage(M, 0, 0);
+      g.globalCompositeOperation = 'source-over';
+      ctx.drawImage(O, x0, 0);
+    }
+    S.drawMoonlight(ctx, t, L, x0, x1); S.drawFireflies(ctx, t, L, x0, x1);
     for(const c of mobs) if(c.bubble && c.x + F / 2 > x0 && c.x - F / 2 < x1) drawBubble(ctx, c, t);
     if(sel) placeLabel();
   }
@@ -413,9 +441,10 @@ function create({canvas, label, faces, toys: tray, onOpen}){
     else if(!drag && Math.abs(vel) > 2){ setCam(camX + vel * dt); vel *= Math.pow(.03, dt); if(camX <= 0 || camX >= W - VW) vel = 0; }
     clock = t;
     stepToys(dt);
-    const w = {fx, mobs, t, butterflies: S.butterflies(t), toys};
+    const night = light().night;
+    const w = {fx, mobs, t, night, butterflies: night > .5 ? S.fireflies(t) : S.butterflies(t), toys};   // after dark, playful ones chase fireflies instead
     for(const c of mobs) stepCreature(c, dt, w);
-    for(const c of mobs) if(c.x > camX && c.x < camX + VW && (c.watched = (c.watched || 0) + dt) >= 60){   // a minute of watching it
+    for(const c of mobs) if(c.x > camX && c.x < camX + VW && (c.watched = (c.watched || 0) + dt * (night > .5 && !c.nap ? 2 : 1)) >= 60){   // a minute of watching it (half that for a night owl)
       c.watched = 0; const r = Bond.add(c.g, 'watch'); if(r.levelUp) cheer(c, r);
     }
     fx.step(dt, t);
@@ -665,6 +694,7 @@ function create({canvas, label, faces, toys: tray, onOpen}){
       frame();
     },
     start(){ fit(); if(!placed) centreOnHerd(); if(still){ frame(); return; } if(!raf){ greet(); last = performance.now(); raf = requestAnimationFrame(tick); } },
+    setHour(h){ hourSet = h ?? null; lt = null; frame(); },   // null goes back to the clock
     stop(){ if(raf) cancelAnimationFrame(raf); raf = 0; vel = 0; goal = null; select(null); },
   };
 }

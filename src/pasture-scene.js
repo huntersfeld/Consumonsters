@@ -47,24 +47,57 @@ const isWater = new Uint8Array(W * H);
 const ground = new Float32Array(H);   // grass lightness per row, for tinting blades
 const TREES = [{x: 566, y: HZ + 18, s: 1}, {x: 84, y: HZ + 15, s: .8}];   // the old tree on the far bank and a younger one on the near bank
 const TREE = [];                      // canopy blobs of every tree, for falling leaves
-let SKYC, LAND, CLOUDS;
+let LAND, CLOUDS;
+
+/* ---------- time of day: four painted skies, and a colour grade for everything under them ---------- */
+/* sky: three gradient stops, top to horizon; sun or moon: where, its size, core and ring colours; tint: the light on the meadow */
+const LOOKS = {
+  dawn: {sky: [[232, 38, 50], [318, 42, 72], [32, 88, 80]], orb: {x: 128, y: 38, r: 6, core: [48, 100, 92], ring: [36, 100, 76]}, tint: [255, 214, 214], night: .35},
+  day: {sky: SKY, orb: {x: 46, y: 15, r: 5.5, core: [52, 100, 94], ring: [50, 95, 84]}, tint: [255, 255, 255], night: 0},
+  dusk: {sky: [[252, 42, 36], [332, 48, 56], [24, 92, 64]], orb: {x: 530, y: 41, r: 7, core: [34, 100, 76], ring: [18, 96, 62]}, tint: [255, 190, 156], night: .4},
+  night: {sky: [[234, 52, 9], [230, 46, 15], [224, 40, 24]], orb: {x: 378, y: 13, r: 4.5, core: [52, 34, 92], ring: [220, 30, 70], moon: true}, tint: [92, 108, 172], night: 1, stars: 90},
+};
+const SKIES = {};
+/* hour of the day -> which looks to blend, how far, how dark it is (0..1) and the light on the meadow */
+const KEYS = [[0, 'night'], [5, 'night'], [6.2, 'dawn'], [7.5, 'day'], [17.8, 'day'], [19, 'dusk'], [20.3, 'night'], [24, 'night']];
+function lightAt(hour){
+  hour = ((hour % 24) + 24) % 24;
+  let i = 0; while(KEYS[i + 1][0] <= hour && i < KEYS.length - 2) i++;
+  const [h0, a] = KEYS[i], [h1, b] = KEYS[i + 1], k = h1 > h0 ? (hour - h0) / (h1 - h0) : 0, ease = k * k * (3 - 2 * k);
+  const A = LOOKS[a], B = LOOKS[b], tint = A.tint.map((v, j) => Math.round(v + (B.tint[j] - v) * ease));
+  return {a, b, k: ease, night: A.night + (B.night - A.night) * ease, tint, graded: tint.some(v => v < 255)};
+}
+function paintSky(L, rnd){
+  const cv = layer(W, HZ), ctx = cv.getContext('2d'), img = ctx.createImageData(W, HZ), d = img.data, {sky, orb} = L;
+  const set = (x, y, c, raw) => {if(x < 0 || y < 0 || x >= W || y >= HZ) return; const [r, g, b] = raw ? c : rgb(c), i = (y * W + x) * 4; d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = 255;};
+  const st = sky.map(rgb), toHsl = ([r, g, b]) => { r /= 255; g /= 255; b /= 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, dd = mx - mn;
+    if(!dd) return [0, 0, l * 100]; const s = dd / (1 - Math.abs(2 * l - 1)), h = mx === r ? ((g - b) / dd + 6) % 6 : mx === g ? (b - r) / dd + 2 : (r - g) / dd + 4; return [h * 60, s * 100, l * 100]; };
+  for(let y = 0; y < HZ; y++) for(let x = 0; x < W; x++){
+    const f = y / HZ * 6, i = Math.floor(f), k = (i + (f - i > bayer(x, y) ? 1 : 0)) / 6;
+    let c = toHsl(k < .5 ? mix(st[0], st[1], k * 2) : mix(st[1], st[2], k * 2 - 1));   // mixed in RGB, so pink to orange never passes through green
+    const sd = Math.hypot(x - orb.x, y - orb.y), r = orb.r, glow = orb.moon ? 5 : 2.5;
+    if(sd < r) c = orb.moon && Math.hypot(x - orb.x - 1.5, y - orb.y + 1) < 1.3 ? shift(orb.core, -8, 160, -10) : orb.core;   // the moon gets a little crater
+    else if(sd < r + 2) c = orb.ring;
+    else if(sd < r + 2 + glow && bayer(x, y) > (sd - r - 2) / glow) c = shift(c, orb.moon ? 6 : 4, orb.moon ? 0 : -8);
+    set(x, y, c);
+  }
+  for(let n = 0; n < (L.stars || 0); n++){   // stars, thinning toward the horizon
+    const x = Math.floor(rnd() * W), y = Math.floor(rnd() ** 1.6 * (HZ - 14));
+    if(Math.hypot(x - orb.x, y - orb.y) < orb.r + 8) continue;
+    const big = rnd() < .12, c = [rnd() < .3 ? 48 : 220, 40, big ? 94 : 70 + rnd() * 16];
+    set(x, y, c);
+    if(big){ const g = shift(c, -30); set(x - 1, y, g); set(x + 1, y, g); set(x, y - 1, g); set(x, y + 1, g); }
+  }
+  ctx.putImageData(img, 0, 0);
+  return cv;
+}
+const TWINKLE = (() => { const r = mulberry(hash32('pasture-twinkle')); return Array.from({length: 18}, () => ({x: Math.floor(r() * W), y: Math.floor(r() ** 1.5 * (HZ - 18)), ph: r() * 6, sp: .6 + r() * 1.4})); })();
+
 
 function buildScene(){
   const rnd = mulberry(hash32('pasture-v2'));
-  // sky and sun
-  SKYC = layer(W, HZ);
-  {
-    const ctx = SKYC.getContext('2d'), img = ctx.createImageData(W, HZ), d = img.data;
-    const set = (x, y, c) => {const [r, g, b] = rgb(c), i = (y * W + x) * 4; d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = 255;};
-    for(let y = 0; y < HZ; y++) for(let x = 0; x < W; x++){
-      const f = y / HZ * 6, i = Math.floor(f), k = (i + (f - i > bayer(x, y) ? 1 : 0)) / 6;
-      let c = k < .5 ? mix(SKY[0], SKY[1], k * 2) : mix(SKY[1], SKY[2], k * 2 - 1);
-      const sd = Math.hypot(x - 46, y - 15);
-      if(sd < 5.5) c = [52, 100, 94]; else if(sd < 7.5) c = [50, 95, 84]; else if(sd < 10 && bayer(x, y) > (sd - 7.5) / 2.5) c = shift(c, 4, -8);
-      set(x, y, c);
-    }
-    ctx.putImageData(img, 0, 0);
-  }
+  // the sky, painted four times: dawn, day, dusk and night
+  for(const [k, L] of Object.entries(LOOKS)) SKIES[k] = paintSky(L, mulberry(hash32('pasture-sky-' + k)));
   CLOUDS = Array.from({length: 7}, (_, j) => {
     const i = j % 3, cv = document.createElement('canvas'), w = 22 + i * 6 + Math.floor(rnd() * 8), h = 9 + i; cv.width = w; cv.height = h;
     const ctx = cv.getContext('2d'), blobs = [[w * .3, h * .62, w * .22, h * .38], [w * .55, h * .45, w * .26, h * .46], [w * .78, h * .66, w * .18, h * .32]];
@@ -236,10 +269,36 @@ function buildProps(rnd){
 
 /* ---------- moving scenery, drawn every frame for the columns x0..x1 ---------- */
 const WC = [WATER.glint, WATER.foam].map(css);
-function drawSky(ctx, t){
-  ctx.drawImage(SKYC, 0, 0);
+/* the sky for this light; the land, clouds included, goes on top and is graded with everything else */
+function drawSky(ctx, t, lt){
+  ctx.drawImage(SKIES[lt.a], 0, 0);
+  if(lt.k > 0 && lt.b !== lt.a){ ctx.globalAlpha = lt.k; ctx.drawImage(SKIES[lt.b], 0, 0); ctx.globalAlpha = 1; }
+  if(lt.night > .5){   // a few stars twinkle
+    ctx.fillStyle = 'rgb(255,250,226)';
+    for(const s of TWINKLE){ const v = Math.sin(t * s.sp + s.ph); if(v > .55){ ctx.globalAlpha = (lt.night - .5) * 2 * (v - .55) / .45; ctx.fillRect(s.x, s.y, 1, 1); } }
+    ctx.globalAlpha = 1;
+  }
+}
+function drawLand(ctx, t, lt){
+  ctx.globalAlpha = 1 - .45 * lt.night;
   for(const cl of CLOUDS){ const span = W + cl.cv.width * 2, x = ((cl.x + t * cl.v) % span + span) % span - cl.cv.width; ctx.drawImage(cl.cv, Math.round(x), cl.y); }
+  ctx.globalAlpha = 1;
   ctx.drawImage(LAND, 0, 0);
+}
+/* night light, drawn over the grade so it glows: the moon on the stream */
+function drawMoonlight(ctx, t, lt, x0, x1){
+  if(lt.night < .5) return;
+  const a = (lt.night - .5) * 2, mx = LOOKS.night.orb.x, k = Math.floor(t * 4);
+  ctx.fillStyle = 'rgb(236,240,255)';
+  for(let y = HZ + 1; y < H; y++){
+    const c = sCx(y), half = sW(y) * .32, row = y * W;
+    for(let x = Math.max(x0, Math.ceil(c - half)); x <= Math.min(x1, Math.floor(c + half)); x++){
+      if(!isWater[row + x]) continue;
+      const near = 1 - Math.abs(x - c) / (half + 1), q = h2(x, y * 3 + k);
+      if(q < .16 * near * (1 - (y - HZ) / (H - HZ) * .5) + (Math.abs(x - mx) < 3 && y < HZ + 30 ? .2 : 0)){ ctx.globalAlpha = a * (.45 + .55 * near); ctx.fillRect(x, y, 1, 1); }
+    }
+  }
+  ctx.globalAlpha = 1;
 }
 function drawWater(ctx, t, x0, x1){
   const k = Math.floor(t * 9);
@@ -302,7 +361,10 @@ const BUTTERFLIES = [[0, 60, 50, [50, 92, 72]], [2.4, 150, 110, [0, 0, 97]], [4.
   [3.3, 310, 120, [50, 92, 72]], [5.0, 470, 60, [0, 0, 97]], [0.7, 580, 115, [22, 88, 62]]].map(([ph, cx, cy, c]) => ({ph, cx, cy: HZ + cy * .82, c: css(c)}));
 const butterflyAt = (b, t) => [Math.round(b.cx + 30 * Math.sin(t * .23 + b.ph) + 8 * Math.sin(t * .9 + b.ph * 2)), Math.round(b.cy + 10 * Math.sin(t * .31 + b.ph * 3) + 3 * Math.sin(t * 2.3 + b.ph))];
 const butterflies = t => BUTTERFLIES.map(b => butterflyAt(b, t));
-function drawButterflies(ctx, t){
+function drawButterflies(ctx, t, lt){
+  const a = Math.max(0, 1 - lt.night * 1.6);   // gone by nightfall
+  if(!a) return;
+  ctx.globalAlpha = a;
   for(const b of BUTTERFLIES){
     const [x, y] = butterflyAt(b, t);
     const open = Math.floor(t * 7 + b.ph) % 2;
@@ -310,10 +372,31 @@ function drawButterflies(ctx, t){
     if(open){ ctx.fillRect(x - 1, y - 1, 1, 2); ctx.fillRect(x + 1, y - 1, 1, 2); } else { ctx.fillRect(x - 1, y - 2, 1, 1); ctx.fillRect(x + 1, y - 2, 1, 1); }
     ctx.fillStyle = 'rgb(40,30,30)'; ctx.fillRect(x, y - 1, 1, 2);
   }
+  ctx.globalAlpha = 1;
+}
+
+/* fireflies come out at night, low over the grass, and blink */
+const FIREFLIES = (() => { const r = mulberry(hash32('pasture-fireflies')); return Array.from({length: 26}, () => ({cx: r() * W, cy: HZ + 24 + r() * (H - HZ - 34), ph: r() * 6, sp: .5 + r() * .6, blink: 1.2 + r() * 2.5})); })();
+const fireflyAt = (f, t) => [Math.round(f.cx + 22 * Math.sin(t * .17 * f.sp + f.ph) + 6 * Math.sin(t * .8 + f.ph * 2)), Math.round(f.cy + 7 * Math.sin(t * .23 * f.sp + f.ph * 3) + 2 * Math.sin(t * 1.9 + f.ph))];
+const fireflies = t => FIREFLIES.map(f => fireflyAt(f, t));
+const FLY = ['rgb(250,255,170)', 'rgba(220,255,120,.35)'];
+function drawFireflies(ctx, t, lt, x0, x1){
+  if(lt.night < .3) return;
+  const a = Math.min(1, (lt.night - .3) / .5);
+  for(const f of FIREFLIES){
+    const [x, y] = fireflyAt(f, t);
+    if(x < x0 - 2 || x > x1 + 2) continue;
+    const g = Math.sin(t * f.blink + f.ph);
+    if(g < -.2) continue;
+    ctx.globalAlpha = a * Math.min(1, (g + .2) * 1.6);
+    ctx.fillStyle = FLY[1]; ctx.fillRect(x - 1, y, 3, 1); ctx.fillRect(x, y - 1, 1, 3);
+    ctx.fillStyle = FLY[0]; ctx.fillRect(x, y, 1, 1);
+  }
+  ctx.globalAlpha = 1;
 }
 
 let built = false;
 function build(){ if(!built){ buildProps(buildScene()); built = true; } }
 
-window.PastureScene = {W, H, HZ, clamp, css, WATER, isWater, sCx, sW, sL, sR, TREES, PROPS, build, drawSky, drawWater, makeFx, drawButterflies, butterflies};
+window.PastureScene = {W, H, HZ, clamp, css, WATER, isWater, sCx, sW, sL, sR, TREES, PROPS, build, lightAt, drawSky, drawLand, drawWater, drawMoonlight, makeFx, drawButterflies, butterflies, drawFireflies, fireflies};
 })();
