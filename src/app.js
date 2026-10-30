@@ -1,7 +1,7 @@
 /* Consumonsters app: scanning, hatching and the collection. The creature rules live in engine.js. */
 (() => {
 'use strict';
-const {normalize, roll, render, RARITY, SIZES, DOMAINS, lab, upcOf} = window.CM;
+const {normalize, roll, RARITY, SIZES, DOMAINS, lab, upcOf} = window.CM;
 const $ = s => document.querySelector(s);
 const FAMILIES = true;
 const STORE = 'consumonsters.collection.v1';
@@ -15,6 +15,8 @@ try{ col = JSON.parse(localStorage.getItem(STORE)) || {}; }catch{ col = {}; }
 const saveCol = () => { try{ localStorage.setItem(STORE, JSON.stringify(col)); }catch{} };
 const cache = new Map();
 const creature = g => { if(!cache.has(g)) cache.set(g, roll(g, {families:FAMILIES})); return cache.get(g); };
+const Hats = window.CMHats, Rewards = window.CMRewards;
+Rewards.setSource(() => Object.keys(col).map(g => ({g, t: creature(g)})));
 
 /* ---------- barcode decoding ---------- */
 function upceToUpca(s){
@@ -123,6 +125,7 @@ function tagHTML(t, entry){
     window.CMTemper.temperament(t.gtin, t.domain).word,
     entry ? `<span class="hearts" title="Friendship">${window.CMBond.heartText(window.CMBond.hearts(t.gtin))}</span>` : null,
     entry && window.CMBond.hearts(t.gtin) === window.CMBond.BEST ? '<span class="hot">Best friend</span>' : null,
+    entry && Rewards.worn(t.gtin) ? `Wearing a ${Hats.HATS[Rewards.worn(t.gtin)].name.toLowerCase()}` : null,
     t.famHit ? 'Brand family' : null,
     t.donor ? `<span class="hot">+ ${DOMAINS[t.donor].label} parts</span>` : null,
     pal ? `<span class="hot">${pal}</span>` : null,
@@ -146,7 +149,7 @@ function tagHTML(t, entry){
 
 function show(gtin, {badge=null, animate=false} = {}){
   const t = creature(gtin); current = gtin;
-  render($('#hero'), t, {scale:10});
+  Hats.renderWith($('#hero'), t, col[gtin] && Rewards.worn(gtin), 10);
   $('#hero').setAttribute('aria-label', `${t.name}, a ${RARITY[t.rarity].label} ${SIZES[t.size].label} ${DOMAINS[t.domain].label}`);
   $('#tag').innerHTML = tagHTML(t, col[gtin]);
   const b = $('#badge');
@@ -173,6 +176,8 @@ function hatch(raw){
   const treats = window.CMBond.earnTreats(g, isNew), got = treats ? ` +${treats} treat${treats > 1 ? 's' : ''} for the pasture.` : '';
   if(bond && bond.gained) status(`${t.name} recognizes you.${bond.levelUp ? ' New heart!' : ''}${got}`);
   else if(got && !(isNew && RANK.indexOf(t.rarity) >= RANK.indexOf('rare'))) status(got.trim());
+  const hats = Rewards.check();
+  if(hats.length) status(`${$('#status').textContent} New hat${hats.length > 1 ? 's' : ''}: ${hats.map(r => Hats.HATS[r.hat].name).join(', ')}! Try ${hats.length > 1 ? 'them' : 'it'} on in the pasture.`.trim());
   $('#manual').hidden = true;
   if(location.hash !== '#scan' && location.hash) location.hash = 'scan';
   window.scrollTo({top:0, behavior:'auto'});
@@ -210,7 +215,7 @@ function drawDex(){
     const c = document.createElement('button'); c.type = 'button'; c.className = 'cell';
     c.innerHTML = `<div class="tile"><i class="pip bg-${t.rarity}"></i>${e.count>1?`<span class="times">×${e.count}</span>`:''}</div><b>${t.name}</b><span>${RARITY[t.rarity].label} · ${DOMAINS[t.domain].label}</span>`;
     const cv = document.createElement('canvas'); cv.setAttribute('role','img'); cv.setAttribute('aria-label', t.name);
-    c.querySelector('.tile').prepend(cv); render(cv, t, {scale:4});
+    c.querySelector('.tile').prepend(cv); Hats.renderWith(cv, t, Rewards.worn(g), 4);
     c.addEventListener('click', () => { show(g); location.hash = 'scan'; });
     grid.appendChild(c);
   }
@@ -273,6 +278,7 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('hashchange', route);
 
 updateCount();
+Rewards.check();   // hats already earned by an existing collection
 const latest = Object.entries(col).sort((a,b) => b[1].last - a[1].last)[0];
 if(latest) show(latest[0]);
 else show(normalize(SAMPLE).gtin, {badge: {text: 'Example · scan to start', cls: 'example'}});
