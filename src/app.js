@@ -15,8 +15,10 @@ try{ col = JSON.parse(localStorage.getItem(STORE)) || {}; }catch{ col = {}; }
 const saveCol = () => { try{ localStorage.setItem(STORE, JSON.stringify(col)); }catch{} };
 const cache = new Map();
 const creature = g => { if(!cache.has(g)) cache.set(g, roll(g, {families:FAMILIES})); return cache.get(g); };
-const Hats = window.CMHats, Rewards = window.CMRewards;
-Rewards.setSource(() => Object.keys(col).map(g => ({g, t: creature(g)})));
+const Hats = window.CMHats, Rewards = window.CMRewards, Places = window.CMPlaces;
+const entries = () => Object.keys(col).map(g => ({g, t: creature(g)}));
+Rewards.setSource(entries); Places.setSource(entries);
+const opened = list => list.length === 1 ? `${list[0].name} is open! Your ${DOMAINS[list[0].domain].label.toLowerCase()} creatures moved in.` : `${list.map(p => p.name).join(' and ')} are open!`;
 
 /* ---------- barcode decoding ---------- */
 function upceToUpca(s){
@@ -176,6 +178,8 @@ function hatch(raw){
   const treats = window.CMBond.earnTreats(g, isNew), got = treats ? ` +${treats} treat${treats > 1 ? 's' : ''} for the pasture.` : '';
   if(bond && bond.gained) status(`${t.name} recognizes you.${bond.levelUp ? ' New heart!' : ''}${got}`);
   else if(got && !(isNew && RANK.indexOf(t.rarity) >= RANK.indexOf('rare'))) status(got.trim());
+  const places = Places.check();
+  if(places.length) status(`${$('#status').textContent} ${opened(places)}`.trim());
   const hats = Rewards.check();
   if(hats.length) status(`${$('#status').textContent} New hat${hats.length > 1 ? 's' : ''}: ${hats.map(r => Hats.HATS[r.hat].name).join(', ')}! Try ${hats.length > 1 ? 'them' : 'it'} on in the pasture.`.trim());
   $('#manual').hidden = true;
@@ -241,20 +245,51 @@ function drawRewards(){
     }
     el.appendChild(sec);
   }
+  const sec = document.createElement('section');   // places open the same way, so they're listed here too
+  sec.innerHTML = '<h3 class="eyebrow">Places</h3>';
+  for(const p of Places.list()){
+    const row = document.createElement('div'); row.className = 'reward' + (p.open ? '' : ' locked');
+    row.innerHTML = `<i class="swatch" style="--a:${p.swatch[0]};--b:${p.swatch[1]}"></i><div><b></b><span></span></div><em>${p.open ? 'Open' : `${p.have}/${p.need}`}</em>`;
+    row.querySelector('b').textContent = p.name;
+    row.querySelector('span').textContent = p.id === 'meadow' ? 'Always open' : `Catch ${p.need} ${DOMAINS[p.domain].label.toLowerCase()} creatures`;
+    sec.appendChild(row);
+  }
+  el.appendChild(sec);
 }
 
 /* ---------- home: the pasture ---------- */
 const PASTURE_MAX = 40;
-let pasture = null;
+let pasture = null, justOpened = [];
 function drawHome(){
-  if(!pasture) pasture = window.Pasture.create({canvas: $('#pasture'), label: $('#plabel'), faces: $('#pfaces'), toys: $('#ptoys'), onOpen: g => { show(g); location.hash = 'scan'; }});
-  const all = Object.entries(col).sort((a,b) => b[1].last - a[1].last);
+  if(!pasture) pasture = window.Pasture.create({canvas: $('#pasture'), label: $('#plabel'), faces: $('#pfaces'), toys: $('#ptoys'), onOpen: g => { show(g); location.hash = 'scan'; },
+    movesFor: g => { const here = Places.homeOf(g, creature(g)); return Places.list().filter(p => p.open && p.id !== here); },
+    onMove: (g, id) => { Places.move(g, id); drawHome(); pasture.toast(`${creature(g).name} moved to ${Places.byId[id].name.toLowerCase()}.`); }});
+  const here = Places.current(), P = Places.byId[here];
+  pasture.setPlace(here);
+  drawSigns(here);
+  const all = Object.entries(col).filter(([g]) => Places.homeOf(g, creature(g)) === here).sort((a,b) => b[1].last - a[1].last);
   pasture.setCreatures(all.slice(0, PASTURE_MAX).map(([g]) => ({g, t: creature(g)})));
   pasture.start();
-  const n = all.length;
-  $('#pasture-note').textContent = !n ? 'Nobody lives here yet. Scan a barcode and your creatures will move in.'
-    : n > PASTURE_MAX ? `Your ${PASTURE_MAX} most recent catches are out in the meadow. Tap one to say hello.`
-    : `${n} ${n === 1 ? 'creature lives' : 'creatures live'} here. Tap one to say hello.`;
+  if(justOpened.length){ pasture.toast(opened(justOpened), 4500); justOpened = []; }
+  const n = all.length, where = P.name.toLowerCase();
+  $('#pasture-note').textContent = !Object.keys(col).length ? 'Nobody lives here yet. Scan a barcode and your creatures will move in.'
+    : !n ? `Nobody lives in ${where} yet. Tap a creature in another place, then Move.`
+    : n > PASTURE_MAX ? `Your ${PASTURE_MAX} most recent catches are out in ${where}. Tap one to say hello.`
+    : `${n} ${n === 1 ? 'creature lives' : 'creatures live'} in ${where}. Tap one to say hello.`;
+}
+/* the signposts: one per place, the locked ones showing how close you are */
+function drawSigns(here){
+  const nav = $('#places'); nav.replaceChildren();
+  for(const p of Places.list()){
+    const b = document.createElement('button'); b.type = 'button'; b.disabled = !p.open;
+    b.setAttribute('aria-pressed', String(p.id === here));
+    b.style.setProperty('--a', p.swatch[0]); b.style.setProperty('--b', p.swatch[1]);
+    b.innerHTML = `<i></i><span></span><small>${p.open ? p.residents : `${p.have}/${p.need}`}</small>`;
+    b.querySelector('span').textContent = p.sign;
+    b.title = p.open ? `${p.name}: ${p.residents} living here` : `Catch ${p.need} ${DOMAINS[p.domain].label.toLowerCase()} creatures to open ${p.name.toLowerCase()}`;
+    b.addEventListener('click', () => { if(p.id !== Places.current()){ Places.go(p.id); drawHome(); } });
+    nav.appendChild(b);
+  }
 }
 
 const VIEWS = {scan: ['#view-scan', '#tab-scan'], home: ['#view-home', '#tab-home'], collection: ['#view-dex', '#tab-dex']};
@@ -301,6 +336,7 @@ window.addEventListener('hashchange', route);
 
 updateCount();
 Rewards.visit(); Rewards.check();   // today's visit, and hats already earned by an existing collection
+justOpened = Places.check();   // places an existing collection has already opened; announced in the pasture
 const latest = Object.entries(col).sort((a,b) => b[1].last - a[1].last)[0];
 if(latest) show(latest[0]);
 else show(normalize(SAMPLE).gtin, {badge: {text: 'Example · scan to start', cls: 'example'}});

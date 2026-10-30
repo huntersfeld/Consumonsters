@@ -1,15 +1,17 @@
-/* Consumonsters pasture: caught creatures hop around the meadow from pasture-scene.js. The meadow is wider than
-   most screens, so the canvas is a window onto it that you can drag sideways. Nothing here changes how a creature looks. */
+/* Consumonsters pasture: caught creatures hop around one of the places in src/places/ (the meadow, the lagoon…),
+   drawn with the kit in pasture-scene.js. A place is wider than most screens, so the canvas is a window onto it that
+   you can drag sideways. Nothing here changes how a creature looks. */
 (() => {
 'use strict';
 const {F, hash32, mulberry, render, RARITY} = window.CM;
 const {temperament} = window.CMTemper;
 const Bond = window.CMBond;
 const Hats = window.CMHats, Rewards = window.CMRewards;
-const S = window.PastureScene;
-const {W, H, HZ, clamp, css, WATER, isWater, sCx, sW, sL, sR, TREES, PROPS} = S;
+const K = window.PastureScene;
+const {W, H, HZ, clamp, css, WATER} = K;
+let S = null;                              // the place on screen: its land map, water, props and nap spots
 const FOOT = F - 3, CXS = (F - 1) / 2;     // sprite foot row and centre column (GY and CX in engine.js)
-const Y0 = HZ + 22;                        // creatures stay in front of the fence
+let Y0 = HZ + 22;                          // creatures stay in front of the place's back edge (the meadow's fence)
 const MIN_SCALE = 2;                       // screen pixels per scene pixel, at least; narrower screens pan instead of shrinking
 const SHADOW = 'rgba(16,40,12,.26)';
 const HEART_PULL = [0, .25, .35, .45, .55, .65];   // how much more likely a call is answered at 0..5 hearts
@@ -44,17 +46,24 @@ function makeSprite(t){
   ctx.putImageData(img, 0, 0);
   return {cv, x0, x1, y0, y1};
 }
-/* Where a creature may stand. Walkers keep to their own bank of the stream; winged ones can use either bank (hopping
-   over the water), aquatic ones can be anywhere including the stream, and floaters drift wherever they like. */
-const nearOK = (c, x, y) => x + c.hw <= sL(y) - 2;
-const farOK = (c, x, y) => x - c.hw >= sR(y) + 2;
+/* Where a creature may stand. Each place splits its dry land into patches (the two banks of the meadow's stream,
+   the lagoon's islands). Walkers keep to the patch they live on; winged ones can use any patch, hopping over the
+   water between them; swimmers can be anywhere including the water, and floaters drift wherever they like. */
+const landAt = (x, y) => { x = Math.round(x); y = Math.round(y); return x < 0 || y < 0 || x >= W || y >= H ? 0 : S.land[y * W + x]; };
 function walkable(c, x, y){
   if(y < Y0 || y > H - 3 || x - c.hw < 3 || x + c.hw > W - 3) return false;
   if(c.move === 'swim' || c.move === 'float') return true;
-  if(c.move === 'fly') return nearOK(c, x, y) || farOK(c, x, y);
-  return c.bank ? farOK(c, x, y) : nearOK(c, x, y);
+  const m = landAt(x, y);
+  if(!m || landAt(x - c.hw, y) !== m || landAt(x + c.hw, y) !== m) return false;
+  return c.move === 'fly' || m === c.home;
 }
-const inWater = c => {const x = Math.round(c.x), y = Math.round(c.y); return y < H && y >= 0 && x >= 0 && x < W && !!isWater[y * W + x];};
+const inWaterAt = (x, y) => { x = Math.round(x); y = Math.round(y); return y >= 0 && y < H && x >= 0 && x < W && !!S.isWater[y * W + x]; };
+const inWater = c => inWaterAt(c.x, c.y);
+/* somewhere in the water within r of (x, y), for a swimmer */
+function waterNear(x, y, r){
+  for(let i = 0; i < 12; i++){ const a = Math.random() * Math.PI * 2, d = Math.random() * r, tx = x + Math.cos(a) * d, ty = clamp(y + Math.sin(a) * d * .6, Y0, H - 3); if(inWaterAt(tx, ty)) return [tx, ty]; }
+  return null;
+}
 
 function newCreature(g, t){
   const spr = makeSprite(t), n = (spr.x1 - spr.x0 + 1);
@@ -62,14 +71,14 @@ function newCreature(g, t){
   const c = {g, t, spr, hw: Math.max(3, n / 2), floater: t.feet === 'float', aquatic: t.domain === 'aquatic',
     move: t.feet === 'float' ? 'float' : t.domain === 'aquatic' ? 'swim' : /^wings_/.test(t.sides) ? 'fly' : 'walk',
     st: 'idle', timer: r() * 3, lift: 0, ph: r() * 4, happy: 0, x: 0, y: 0, p: temperament(g, t.domain), mode: null, bubble: null};
-  c.bank = r() < sCx(Y0) / W ? 0 : 1;   // walkers live on one bank, picked in proportion to its width
+  { let k = r() * S.areas.reduce((a, b) => a + b, 0); c.home = S.areas.findIndex(a => (k -= a) < 0); }   // walkers live on one patch of land, picked in proportion to its size
   const size = spr.y1 - spr.y0 + 1;
   const G = c.gait = gaitOf(t), pep = (.85 + r() * .3) * (.9 + c.p.energy * .2);   // pep: two creatures with the same feet still differ a little
   c.restK = 1.7 - 1.2 * c.p.energy;   // lazy ones rest longer between wanders
   c.stride = (7 + size * .22) * G.stride * pep; c.hopH = (3 + Math.max(0, 32 - size) * .2) * G.hopH; c.hopT = (.3 + size * .006) * G.hopT / pep;
   c.drift = (5 + r() * 4) * (1.2 - size / 80);   // floaters' glide speed, in scene pixels a second; smaller ones are quicker
   for(let i = 0; i < 60; i++){ c.x = 6 + r() * (W - 12); c.y = Y0 + r() * (H - 3 - Y0); if(walkable(c, c.x, c.y)) break; }
-  if(!walkable(c, c.x, c.y)){ c.bank = 0; c.x = 40; c.y = (Y0 + H) / 2; }
+  if(!walkable(c, c.x, c.y)) for(let y = Y0; y <= H - 3 && !walkable(c, c.x, c.y); y += 4) for(let x = 3; x < W - 3; x += 4) if(walkable(c, x, y)){ c.x = x; c.y = y; break; }
   return c;
 }
 function pickTarget(c, mobs){
@@ -85,11 +94,10 @@ function pickTarget(c, mobs){
   for(let i = 0; i < 14; i++){
     let tx, ty;
     const roll = Math.random();
-    if(c.move !== 'walk' && roll < .25){   // a trip to the other side of the stream
-      ty = c.y + (Math.random() - .5) * 40;
-      tx = c.x < sCx(c.y) ? sR(ty) + 2 + c.hw + Math.random() * 30 : sL(ty) - 2 - c.hw - Math.random() * 30;
+    if(c.move !== 'walk' && roll < .25){   // a longer trip, maybe across the water
+      ty = c.y + (Math.random() - .5) * 40; tx = c.x + (Math.random() < .5 ? -1 : 1) * (30 + Math.random() * 60);
     }
-    else if(c.aquatic && roll < .6){ ty = c.y + (Math.random() - .5) * 50; tx = sCx(ty) + (Math.random() - .5) * sW(ty) * .5; }
+    else if(c.aquatic && roll < .6){ const w = waterNear(c.x, c.y, 70); if(!w) continue; [tx, ty] = w; }
     else { const a = Math.random() * Math.PI * 2, dd = 14 + Math.random() * 40; tx = c.x + Math.cos(a) * dd; ty = c.y + Math.sin(a) * dd * .6; }
     if(walkable(c, tx, ty) && (c.move === 'fly' || walkable(c, (tx + c.x) / 2, (ty + c.y) / 2))){ c.tx = tx; c.ty = ty; return true; }
   }
@@ -105,16 +113,19 @@ function reachable(c, x, y){
   y = clamp(y, Y0, H - 3);
   x = clamp(x, 3 + c.hw, W - 3 - c.hw);
   if(walkable(c, x, y)) return [x, y];
-  const near = [Math.min(x, sL(y) - 2 - c.hw), y], far = [Math.max(x, sR(y) + 2 + c.hw), y];
-  if(c.move === 'walk') return c.bank ? far : near;
-  return walkable(c, ...far) && far[0] - x < x - near[0] ? far : near;
+  for(let r = 1; r < W; r++){   // the closest spot sideways, then up or down a little
+    if(walkable(c, x + r, y)) return [x + r, y];
+    if(walkable(c, x - r, y)) return [x - r, y];
+    if(r % 3 === 0) for(const yy of [clamp(y + r * .6, Y0, H - 3), clamp(y - r * .6, Y0, H - 3)]) if(walkable(c, x, yy)) return [x, yy];
+  }
+  return [c.x, c.y];
 }
 /* a winged creature reaching the water flutters straight over it to the first dry spot on the far side */
 function flyAcross(c, dx, dy, dist){
-  const ux = dx / dist, uy = dy / dist, startNear = c.x < sCx(c.y);
+  const ux = dx / dist, uy = dy / dist, from = landAt(c.x, c.y);
   for(let s = c.stride; s <= Math.min(dist, 55); s++){
     const x = c.x + ux * s, y = c.y + uy * s;
-    if(walkable(c, x, y) && (x < sCx(y)) !== startNear) return [x, y, s];
+    if(walkable(c, x, y) && landAt(x, y) !== from) return [x, y, s];
   }
   return null;
 }
@@ -159,6 +170,7 @@ function call(mobs, x, y, t){
     if(!(d < 110 || (d < 220 && Math.random() < .4))) continue;
     const L = c.lastCall, again = L && t - L.t < 8 && Math.hypot(L.x - x, L.y - y) < 40;
     c.nag = again ? (c.nag || 0) + 1 : 0; c.lastCall = {x, y, t};
+    c.dive = 0;   // a diver comes up to listen
     const p = c.p, wasNapping = c.mode === 'nap' && c.nap > 0;
     let come = clamp(.22 + .75 * p.boldness - .35 * (p.focus - .5) + .22 * c.nag + HEART_PULL[Bond.hearts(c.g)], .08, .97);
     if(wasNapping) come *= .5;
@@ -193,7 +205,7 @@ function endMode(c){
 function startSomething(c, w){
   const p = c.p, R = Math.random(), n = w.night;
   if(p.energy < .4 + .45 * n && R < (1 - p.energy) * (.12 + .3 * n)){   // a nap, under the nearest tree it can reach; most of them doze off at night
-    const tr = TREES.map(tr => reachable(c, tr.x + (Math.random() - .5) * 18, tr.y + 6)).find(([x, y]) => Math.hypot(x - c.x, y - c.y) < 170 && walkable(c, x, y));
+    const tr = S.NAPS.map(tr => reachable(c, tr.x + (Math.random() - .5) * 18, tr.y + 6)).find(([x, y]) => Math.hypot(x - c.x, y - c.y) < 170 && walkable(c, x, y));
     c.mode = 'nap'; c.nap = 0;
     if(tr){ [c.tx, c.ty] = tr; } else { c.tx = c.x; c.ty = c.y; }
     return true;
@@ -260,6 +272,11 @@ function stepCreature(c, dt, w){
   switch(c.st){
     case 'idle':
       c.timer -= dt;
+      if(c.dive){   // under water: bubbles now and then, then back up with a splash
+        c.dive -= dt; if(Math.random() < dt * 2.5) w.fx.bubbles(c.x, c.y - 2);
+        if(c.dive <= 0){ c.dive = 0; w.fx.splash(c.x, c.y - 3); c.happy = 1; c.tx = c.x; c.ty = c.y; nextHop(c); }
+        break;
+      }
       if(c.mode === 'nap' && c.nap){   // asleep: a "z" now and then
         c.nap -= dt; if(!c.bubble && Math.random() < dt * .7) say(c, 'z', 1.6);
         if(c.nap <= 0){ c.mode = null; c.nap = 0; c.timer = .5; }
@@ -269,6 +286,7 @@ function stepCreature(c, dt, w){
       if(c.called) nextHop(c);
       else if(c.mode === 'nap'){ if(Math.hypot(c.tx - c.x, c.ty - c.y) < 2){ c.nap = (10 + Math.random() * 12) * (1 + 1.5 * w.night); say(c, 'z', 1.6); } else nextHop(c); }
       else if(c.mode){ if(modeTarget(c, w)) nextHop(c); else { c.mode = null; c.timer = 1; } }
+      else if(!c.sel && S.dive && c.move === 'swim' && inWater(c) && Math.random() < .2){ c.dive = 2.5 + Math.random() * 3; w.fx.splash(c.x, c.y - 2); }   // a dive, where the water's deep enough
       else if(!c.sel && startSomething(c, w)) nextHop(c);
       else if(!c.sel && Math.random() < (.45 + .45 * c.p.energy) * (1 - .5 * w.night) && pickTarget(c, w.mobs)) nextHop(c);
       else c.timer = (1 + Math.random() * 3) * c.gait.rest * c.restK * (1 + w.night);   // fewer hops after dark
@@ -306,6 +324,7 @@ function liftOf(c, t){
 }
 function drawCreature(ctx, c, t){
   const fx = Math.round(c.x), fy = Math.round(c.y), lift = liftOf(c, t), S = c.spr, wet = inWater(c) && !c.floater;
+  if(c.dive){ ctx.fillStyle = css(WATER.foam); for(let i = -2; i <= 2; i++) if((i + Math.floor(t * 3)) % 2) ctx.fillRect(fx + i, fy, 1, 1); return; }   // just a ripple where it went down
   const left = fx - Math.round(CXS + .5), top = fy - FOOT - lift;
   if(!wet){
     const rx = Math.max(2, Math.round(c.hw * .85 - lift * .25));
@@ -327,7 +346,6 @@ function drawCreature(ctx, c, t){
 }
 /* the top of a creature's head in sprite rows, hat included, for bubbles and labels */
 const headTop = c => { const h = Rewards.worn(c.g); return h ? Math.min(c.spr.y0, Hats.hatTop(c.t, h)) : c.spr.y0; };
-const inWaterAt = (x, y) => { x = Math.round(x); y = Math.round(y); return y >= 0 && y < H && x >= 0 && x < W && !!isWater[y * W + x]; };
 /* a little red-and-white ball, with its shadow on the ground while it's loose */
 const BALL = ['rgb(222,60,64)', 'rgb(255,246,240)', 'rgb(150,30,40)'];
 function drawBall(ctx, x, y, z, shadow){
@@ -364,11 +382,11 @@ function faceOf(c){
 }
 
 /* ---------- the view ---------- */
-function create({canvas, label, faces, toys: tray, onOpen}){
-  S.build();
+function create({canvas, label, faces, toys: tray, onOpen, movesFor = () => [], onMove = () => {}}){
   const ctx = canvas.getContext('2d'), box = canvas.parentElement;
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const fx = S.makeFx();
+  S = K.place('meadow'); Y0 = S.Y0;
+  let fx = K.makeFx(S);
   let mobs = [], byG = new Map(), raf = 0, last = 0, t = 0, sel = null;
   let VW = W, camX = 0, vel = 0, goal = null, placed = false;   // view width and left edge, in scene pixels
 
@@ -398,7 +416,7 @@ function create({canvas, label, faces, toys: tray, onOpen}){
   const fixed = Number.parseFloat(new URLSearchParams(location.search).get('hour'));
   let hourSet = Number.isFinite(fixed) ? fixed : null, lt = null, ltAt = -1e9;
   const hourNow = () => { if(hourSet !== null) return hourSet; const d = new Date(); return d.getHours() + d.getMinutes() / 60; };
-  const light = () => { if(!lt || t - ltAt > 30){ lt = S.lightAt(hourNow()); ltAt = t; } return lt; };
+  const light = () => { if(!lt || t - ltAt > 30){ lt = K.lightAt(hourNow()); ltAt = t; } return lt; };
   let O = null, M = null;   // offscreen layers for the colour grade
   function graded(){
     if(!O || O.width !== VW){ O = document.createElement('canvas'); M = document.createElement('canvas'); O.width = M.width = VW; O.height = M.height = H; }
@@ -408,20 +426,20 @@ function create({canvas, label, faces, toys: tray, onOpen}){
     const x0 = Math.round(camX), x1 = x0 + VW, L = light();
     ctx.setTransform(1, 0, 0, 1, -x0, 0);
     ctx.imageSmoothingEnabled = false;
-    S.drawSky(ctx, t, L);
+    K.drawSky(ctx, t, L);
     // everything under the sky is drawn into its own layer when there's a colour grade, so the light can tint it
     const g = L.graded ? graded() : ctx;
     if(g !== ctx){ g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, VW, H); g.setTransform(1, 0, 0, 1, -x0, 0); g.imageSmoothingEnabled = false; }
-    S.drawLand(g, t, L);
+    K.drawLand(g, t, L, S);
     S.drawWater(g, t, x0, x1);
     const items = [];
-    for(const p of PROPS) if(p.x > x0 - 8 && p.x < x1 + 8) items.push(p);
+    for(const p of S.PROPS) if(p.x > x0 - 8 && p.x < x1 + 8) items.push(p);
     for(const c of mobs) if(c.x + F / 2 > x0 && c.x - F / 2 < x1) items.push({y: c.y + .5, c});
     if(ball && !ball.holder) items.push({y: ball.y + .4, draw: () => drawBall(g, ball.x, ball.y, ball.z, true)});
     for(const tr of treatsOut) items.push({y: tr.y + .3, draw: () => drawTreat(g, tr)});
     items.sort((a, b) => a.y - b.y);
     for(const it of items){ if(it.c){ drawCreature(g, it.c, t); if(ball && ball.holder === it.c) drawBall(g, it.c.x, it.c.y - 3, liftOf(it.c, t) + 2, false); } else it.draw(g, t); }
-    fx.draw(g); S.drawButterflies(g, t, L);
+    fx.draw(g); K.drawButterflies(g, t, L, S);
     if(g !== ctx){   // multiply by the light, keep the layer's own shape, then lay it over the sky
       g.setTransform(1, 0, 0, 1, 0, 0);
       const m = M.getContext('2d'); m.globalCompositeOperation = 'copy'; m.drawImage(O, 0, 0);
@@ -430,8 +448,8 @@ function create({canvas, label, faces, toys: tray, onOpen}){
       g.globalCompositeOperation = 'source-over';
       ctx.drawImage(O, x0, 0);
     }
-    S.drawMoonlight(ctx, t, L, x0, x1); S.drawFireflies(ctx, t, L, x0, x1);
-    for(const c of mobs) if(c.bubble && c.x + F / 2 > x0 && c.x - F / 2 < x1) drawBubble(ctx, c, t);
+    K.drawMoonlight(ctx, t, L, x0, x1, S); K.drawFireflies(ctx, t, L, x0, x1);
+    for(const c of mobs) if(c.bubble && !c.dive && c.x + F / 2 > x0 && c.x - F / 2 < x1) drawBubble(ctx, c, t);
     if(sel) placeLabel();
   }
   function tick(now){
@@ -444,7 +462,7 @@ function create({canvas, label, faces, toys: tray, onOpen}){
     clock = t;
     stepToys(dt);
     const night = light().night;
-    const w = {fx, mobs, t, night, butterflies: night > .5 ? S.fireflies(t) : S.butterflies(t), toys};   // after dark, playful ones chase fireflies instead
+    const w = {fx, mobs, t, night, butterflies: night > .5 ? K.fireflies(t) : K.butterflies(t, S), toys};   // after dark, playful ones chase fireflies instead
     for(const c of mobs) stepCreature(c, dt, w);
     for(const c of mobs) if(c.x > camX && c.x < camX + VW && (c.watched = (c.watched || 0) + dt * (night > .5 && !c.nap ? 2 : 1)) >= 60){   // a minute of watching it (half that for a night owl)
       c.watched = 0; const r = Bond.add(c.g, 'watch'); if(r.levelUp) cheer(c, r);
@@ -469,13 +487,15 @@ function create({canvas, label, faces, toys: tray, onOpen}){
     if(!still && (c.st === 'idle' || c.st === 'glide')){ c.happy = 2; c.tx = c.x; c.ty = c.y; c.lift = 0; nextHop(c); }
     const R = RARITY[c.t.rarity];
     label.innerHTML = `<div><b></b><span class="r-${c.t.rarity}">${R.label}</span></div>
-      <div><i></i><span class="hearts"></span><button type="button" class="pet">Pet</button><button type="button" class="hat" aria-expanded="false">Hat</button><button type="button" class="view">View</button></div>
-      <div class="wardrobe" role="group" aria-label="Hats" hidden></div>`;
+      <div><i></i><span class="hearts"></span><button type="button" class="pet">Pet</button><button type="button" class="hat" aria-expanded="false">Hat</button>${movesFor(c.g).length ? '<button type="button" class="move" aria-expanded="false">Move</button>' : ''}<button type="button" class="view">View</button></div>
+      <div class="wardrobe" role="group" aria-label="Hats" hidden></div>
+      <div class="moveto" role="group" aria-label="Move to" hidden></div>`;
     label.querySelector('b').textContent = c.t.name; label.querySelector('i').textContent = c.p.word;
     showHearts(c);
     label.querySelector('.view').addEventListener('click', e => { e.stopPropagation(); onOpen(c.g); });
     label.querySelector('.pet').addEventListener('click', e => { e.stopPropagation(); pet(c); });
     label.querySelector('.hat').addEventListener('click', e => { e.stopPropagation(); wardrobe(c); });
+    label.querySelector('.move')?.addEventListener('click', e => { e.stopPropagation(); moveTo(c); });
     label.hidden = false; placeLabel();
     if(still) frame();
   }
@@ -484,6 +504,17 @@ function create({canvas, label, faces, toys: tray, onOpen}){
     const el = label.querySelector('.wardrobe'), btn = label.querySelector('.hat'), open = el.hidden;
     el.hidden = !open; btn.setAttribute('aria-expanded', String(open));
     if(open) fillWardrobe(c);
+    placeLabel();
+  }
+  /* "Move to…": the other places you've opened */
+  function moveTo(c){
+    const el = label.querySelector('.moveto'), btn = label.querySelector('.move'), open = el.hidden;
+    el.hidden = !open; btn.setAttribute('aria-expanded', String(open));
+    if(open) el.replaceChildren(...movesFor(c.g).map(p => {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = `Move to ${p.name.toLowerCase()}`;
+      b.addEventListener('click', e => { e.stopPropagation(); onMove(c.g, p.id); });
+      return b;
+    }));
     placeLabel();
   }
   function fillWardrobe(c){
@@ -592,8 +623,8 @@ function create({canvas, label, faces, toys: tray, onOpen}){
       }
     }
     if(ball && !ball.holder && !ball.hops.length && inWaterAt(ball.x, ball.y)){   // it floats off down the stream
-      ball.y += 6 * dt; ball.x += (sCx(ball.y) - ball.x) * dt;
-      if(ball.y > H + 4) ball = null;
+      const [vx, vy] = S.flow(ball.x, ball.y); ball.x += vx * dt; ball.y += vy * dt;
+      if(ball.y > H + 4 || ball.x < -4 || ball.x > W + 4) ball = null;
     }
     for(const tr of treatsOut) if(tr.falling){ tr.z -= 60 * dt; if(tr.z <= 0){ tr.z = 0; tr.falling = false; noticeTreat(tr); } }
   }
@@ -645,6 +676,7 @@ function create({canvas, label, faces, toys: tray, onOpen}){
   const toScene = e => { const r = canvas.getBoundingClientRect(); return {x: Math.round(camX) + (e.clientX - r.left) / r.width * VW, y: (e.clientY - r.top) / r.height * H}; };
   function hitAt({x: px, y: py}){
     return mobs.slice().sort((a, b) => b.y - a.y).find(c => {
+      if(c.dive) return false;
       const lx = px - (Math.round(c.x) - Math.round(CXS + .5)), ly = py - (Math.round(c.y) - FOOT - liftOf(c, t));
       return lx >= c.spr.x0 - 2 && lx <= c.spr.x1 + 3 && ly >= c.spr.y0 - 2 && ly <= c.spr.y1 + 3;
     });
@@ -714,6 +746,15 @@ function create({canvas, label, faces, toys: tray, onOpen}){
   if(window.ResizeObserver) new ResizeObserver(fit).observe(box); else addEventListener('resize', fit);
 
   return {
+    /* move the view to another place; the creatures there are set next with setCreatures */
+    setPlace(id){
+      if(S.id === id) return;
+      S = K.place(id); Y0 = S.Y0; fx = K.makeFx(S);
+      select(null); byG = new Map(); mobs = []; ball = null; treatsOut.length = 0; armed = null; placed = false;
+      buildFaces(); updateToys(); frame();
+    },
+    place: () => S.id,
+    toast: (msg, ms) => toast(msg, ms),
     /* list: [{g, t}], most recent first */
     setCreatures(list){
       const next = new Map();
