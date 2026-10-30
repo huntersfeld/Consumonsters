@@ -138,11 +138,11 @@ function drawMoonlight(ctx, t, lt, x0, x1, P){
 
 /* ---------- where creatures can stand ---------- */
 /* Splits the ground in front of the back edge into separate patches of dry land (the two banks of a stream,
-   islands in a lagoon). Walkers stay on the patch they live on; fliers hop between them. Water and a two-pixel
-   margin around it count as no land. Patches too small to live on are left out. */
+   islands in a lagoon, the two sides of a gorge). Walkers stay on the patch they live on; fliers hop between them.
+   Water, gaps (a drop nobody can stand in) and a two-pixel margin around them count as no land. Patches too small to live on are left out. */
 function regions(P){
-  const {isWater, Y0} = P, M = new Uint8Array(W * H), wet = new Uint8Array(W * H);
-  for(let y = 0; y < H; y++) for(let x = 0; x < W; x++) if(isWater[y * W + x]) for(let dy = -2; dy <= 2; dy++) for(let dx = -2; dx <= 2; dx++){
+  const {isWater, isGap, Y0} = P, M = new Uint8Array(W * H), wet = new Uint8Array(W * H);
+  for(let y = 0; y < H; y++) for(let x = 0; x < W; x++) if(isWater[y * W + x] || (isGap && isGap[y * W + x])) for(let dy = -2; dy <= 2; dy++) for(let dx = -2; dx <= 2; dx++){
     const xx = x + dx, yy = y + dy; if(xx >= 0 && yy >= 0 && xx < W && yy < H) wet[yy * W + xx] = 1;
   }
   const areas = [0];
@@ -252,7 +252,8 @@ function drawFireflies(ctx, t, lt, x0, x1){
 /* ---------- places ---------- */
 /* a place's builder fills in: name, Y0 (the back edge creatures stay in front of), isWater, LAND (a canvas),
    PROPS (things drawn in depth order with the creatures), NAPS (spots to nap at), drawWater(ctx, t, x0, x1),
-   flow(x, y) (which way a floating ball drifts), and optionally TREE blobs, BUTTERFLIES, petals, leaves, seeds, dive */
+   flow(x, y) (which way a floating ball drifts), and optionally isGap (ground nobody can stand on or swim in, like a
+   gorge), TREE blobs, butterflyPaths, petals, leaves, seeds, dive */
 const BUILDERS = {}, BUILT = {};
 function define(id, builder){ BUILDERS[id] = builder; }
 function place(id){

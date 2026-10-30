@@ -10,6 +10,7 @@ const NEED = 3;
 const PLACES = [
   {id: 'meadow', domain: 'mammal', name: 'The meadow', sign: 'Meadow', swatch: ['#8CC85A', '#5DA6D8']},
   {id: 'lagoon', domain: 'aquatic', name: 'The lagoon', sign: 'Lagoon', swatch: ['#F1DC9C', '#2FB5C9']},
+  {id: 'cliffs', domain: 'bird', name: 'The cliffs', sign: 'Cliffs', swatch: ['#9DC46B', '#8C929C']},
 ];
 const byId = Object.fromEntries(PLACES.map(p => [p.id, p]));
 
