@@ -139,6 +139,15 @@ form.manual input{flex:1 1 180px;min-width:0;font-family:var(--mono);font-size:1
 .plabel .hearts{color:#D6345A;letter-spacing:.06em;font-weight:400;margin-right:auto}
 .plabel button{font-size:12px;font-weight:700;padding:3px 8px;border-radius:4px;border:0;background:var(--accent);color:var(--accent-ink);cursor:pointer}
 .plabel button.pet{background:var(--chip);color:var(--ink)}
+.plabel.below{transform:translate(-50%,0)}
+.plabel button.hat{background:var(--chip);color:var(--ink)}
+.plabel .wardrobe{display:grid;grid-template-columns:repeat(6,32px);gap:4px;padding-top:4px;border-top:1px solid var(--line);white-space:normal}
+.plabel .wardrobe[hidden]{display:none}
+.plabel .wardrobe p{grid-column:1/-1;margin:0;color:var(--muted)}
+.plabel .wardrobe button{width:32px;height:28px;padding:2px;display:grid;place-items:center;background:var(--chip);color:var(--ink);border:2px solid transparent}
+.plabel .wardrobe button[aria-pressed="true"]{border-color:var(--accent)}
+.plabel .wardrobe button:disabled{opacity:.35;cursor:not-allowed}
+.plabel .wardrobe canvas{max-width:100%;max-height:100%;image-rendering:pixelated}
 
 /* tab bar */
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:5;background:var(--surface);border-top:1px solid var(--line);

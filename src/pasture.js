@@ -5,6 +5,7 @@
 const {F, hash32, mulberry, render, RARITY} = window.CM;
 const {temperament} = window.CMTemper;
 const Bond = window.CMBond;
+const Hats = window.CMHats, Rewards = window.CMRewards;
 const S = window.PastureScene;
 const {W, H, HZ, clamp, css, WATER, isWater, sCx, sW, sL, sR, TREES, PROPS} = S;
 const FOOT = F - 3, CXS = (F - 1) / 2;     // sprite foot row and centre column (GY and CX in engine.js)
@@ -314,13 +315,18 @@ function drawCreature(ctx, c, t){
     } else { ctx.fillStyle = SHADOW; ctx.fillRect(fx - rx, fy, rx * 2, 1); ctx.fillRect(fx - rx + 1, fy + 1, rx * 2 - 2, 1); }
   }
   const sh = wet ? FOOT - 3 : FOOT + 2;   // rows of the sprite above the waterline
-  if((c.st === 'crouch' || c.st === 'land') && !wet) ctx.drawImage(S.cv, 0, 0, F, sh, left - 1, top + 2, F + 2, sh - 2);
+  const squash = (c.st === 'crouch' || c.st === 'land') && !wet;
+  if(squash) ctx.drawImage(S.cv, 0, 0, F, sh, left - 1, top + 2, F + 2, sh - 2);
   else ctx.drawImage(S.cv, 0, 0, F, sh, left, top, F, sh);
+  const hat = Rewards.worn(c.g);
+  if(hat) Hats.draw(ctx, c.t, hat, left, top + (squash ? 2 : 0), 1, Math.floor(t * 8));
   if(wet){
     const wl = top + sh, rx = Math.round(c.hw) + 1;
     for(let x = fx - rx; x <= fx + rx; x++){ if((x + Math.floor(t * 4)) % 3 === 0) continue; ctx.fillStyle = css(WATER.foam); ctx.fillRect(x, wl, 1, 1); }
   }
 }
+/* the top of a creature's head in sprite rows, hat included, for bubbles and labels */
+const headTop = c => { const h = Rewards.worn(c.g); return h ? Math.min(c.spr.y0, Hats.hatTop(c.t, h)) : c.spr.y0; };
 const inWaterAt = (x, y) => { x = Math.round(x); y = Math.round(y); return y >= 0 && y < H && x >= 0 && x < W && !!isWater[y * W + x]; };
 /* a little red-and-white ball, with its shadow on the ground while it's loose */
 const BALL = ['rgb(222,60,64)', 'rgb(255,246,240)', 'rgb(150,30,40)'];
@@ -341,16 +347,12 @@ function drawTreat(ctx, tr){
 const GLYPHS = {'♥': ['01010', '11111', '11111', '01110', '00100'], '?': ['111', '001', '011', '000', '010'], '!': ['010', '010', '010', '000', '010'], '…': ['00000', '00000', '00000', '00000', '10101'], 'z': ['111', '001', '010', '100', '111']};
 function drawBubble(ctx, c, t){
   const b = c.bubble, G = GLYPHS[b.k], w = G[0].length, rise = b.k === 'z' ? Math.round((1.6 - b.life) * 4) : 0;
-  const x0 = Math.round(c.x) + (b.k === 'z' ? 3 : -Math.floor(w / 2)), y0 = Math.round(c.y) - FOOT - liftOf(c, t) + c.spr.y0 - 8 - rise;
+  const x0 = Math.round(c.x) + (b.k === 'z' ? 3 : -Math.floor(w / 2)), y0 = Math.round(c.y) - FOOT - liftOf(c, t) + headTop(c) - 8 - rise;
   ctx.globalAlpha = Math.min(1, b.life * 3);
   const dot = (dx, dy) => G.forEach((row, y) => { for(let x = 0; x < w; x++) if(row[x] === '1') ctx.fillRect(x0 + x + dx, y0 + y + dy, 1, 1); });
-  if(b.k === 'z'){   // sleep: a plain white z, with a faint shadow so it still reads against a pale sky
-    ctx.fillStyle = 'rgba(20,24,48,.35)'; dot(1, 1);
-    ctx.fillStyle = 'rgb(255,255,255)'; dot(0, 0);
-  } else {
-    ctx.fillStyle = 'rgba(255,253,240,.92)'; ctx.fillRect(x0 - 1, y0 - 1, w + 2, 7);
-    ctx.fillStyle = b.k === '♥' ? 'rgb(214,52,84)' : 'rgb(40,36,48)'; dot(0, 0);
-  }
+  // plain white, no bubble, with a faint shadow so it still reads against a pale sky
+  ctx.fillStyle = 'rgba(20,24,48,.35)'; dot(1, 1);
+  ctx.fillStyle = 'rgb(255,255,255)'; dot(0, 0);
   ctx.globalAlpha = 1;
 }
 /* a little face for the jump-to row: the sprite's top half, cropped to its outline */
@@ -451,8 +453,12 @@ function create({canvas, label, faces, toys: tray, onOpen}){
     frame();
   }
   function placeLabel(){
-    const c = sel, top = c.y - FOOT - liftOf(c, t) + c.spr.y0 - 3;
-    label.style.left = ((c.x - Math.round(camX)) / VW * 100) + '%'; label.style.top = (Math.max(0, top) / H * 100) + '%';
+    const c = sel, top = c.y - FOOT - liftOf(c, t) + headTop(c) - 3;
+    const bw = box.clientWidth, half = label.offsetWidth / 2;   // kept inside the pasture, even for a creature at the edge
+    label.style.left = clamp((c.x - Math.round(camX)) / VW * bw, Math.min(bw / 2, half + 4), Math.max(bw / 2, bw - half - 4)) + 'px';
+    const below = top / H * box.clientHeight < label.offsetHeight;   // no room above (an open wardrobe is tall): hang it under the creature instead
+    label.classList.toggle('below', below);
+    label.style.top = ((below ? c.y + 3 : top) / H * 100) + '%';
   }
   function select(c){
     if(sel) sel.sel = false;
@@ -463,13 +469,34 @@ function create({canvas, label, faces, toys: tray, onOpen}){
     if(!still && (c.st === 'idle' || c.st === 'glide')){ c.happy = 2; c.tx = c.x; c.ty = c.y; c.lift = 0; nextHop(c); }
     const R = RARITY[c.t.rarity];
     label.innerHTML = `<div><b></b><span class="r-${c.t.rarity}">${R.label}</span></div>
-      <div><i></i><span class="hearts"></span><button type="button" class="pet">Pet</button><button type="button" class="view">View</button></div>`;
+      <div><i></i><span class="hearts"></span><button type="button" class="pet">Pet</button><button type="button" class="hat" aria-expanded="false">Hat</button><button type="button" class="view">View</button></div>
+      <div class="wardrobe" role="group" aria-label="Hats" hidden></div>`;
     label.querySelector('b').textContent = c.t.name; label.querySelector('i').textContent = c.p.word;
     showHearts(c);
     label.querySelector('.view').addEventListener('click', e => { e.stopPropagation(); onOpen(c.g); });
     label.querySelector('.pet').addEventListener('click', e => { e.stopPropagation(); pet(c); });
+    label.querySelector('.hat').addEventListener('click', e => { e.stopPropagation(); wardrobe(c); });
     label.hidden = false; placeLabel();
     if(still) frame();
+  }
+  /* the wardrobe: every hat you've earned, greyed out where this creature's topper is in the way */
+  function wardrobe(c){
+    const el = label.querySelector('.wardrobe'), btn = label.querySelector('.hat'), open = el.hidden;
+    el.hidden = !open; btn.setAttribute('aria-expanded', String(open));
+    if(open) fillWardrobe(c);
+    placeLabel();
+  }
+  function fillWardrobe(c){
+    const el = label.querySelector('.wardrobe'), mine = Rewards.hats(), now = Rewards.worn(c.g);
+    if(!mine.length){ el.innerHTML = '<p>Catch creatures to earn hats.</p>'; return; }
+    el.replaceChildren(...[null, ...mine].map(id => {
+      const b = document.createElement('button'), ok = !id || Hats.allowed(c.t, id), name = id ? Hats.HATS[id].name : 'No hat';
+      b.type = 'button'; b.title = ok ? name : `${name}: ${Hats.why(c.t)}`; b.setAttribute('aria-label', b.title); b.setAttribute('aria-pressed', String(id === now));
+      b.disabled = !ok;
+      if(id) b.appendChild(Hats.icon(id)); else b.textContent = '✕';
+      b.addEventListener('click', e => { e.stopPropagation(); Rewards.wear(c.g, id); fillWardrobe(c); if(id){ c.happy = 2; if(c.st === 'idle'){ c.tx = c.x; c.ty = c.y; nextHop(c); } } if(still) frame(); });
+      return b;
+    }));
   }
   function showHearts(c){
     const h = Bond.hearts(c.g), el = label.querySelector('.hearts');
@@ -494,6 +521,7 @@ function create({canvas, label, faces, toys: tray, onOpen}){
   function cheer(c, r){
     say(c, '♥', 2.2); fx.hearts(c.x, Math.round(c.y) - FOOT + c.spr.y0, 7);
     if(c === sel) showHearts(c);
+    if(Rewards.check().length) newHats();
   }
   /* opening the pasture: good friends say hello, and ones you haven't seen in a week are extra happy */
   function greet(){
@@ -509,7 +537,12 @@ function create({canvas, label, faces, toys: tray, onOpen}){
   let ball = null, armed = null, toastTimer = 0;
   const treatsOut = [];
   const toastEl = document.createElement('div'); toastEl.className = 'ptoast'; toastEl.hidden = true; toastEl.setAttribute('role', 'status'); box.appendChild(toastEl);
-  function toast(msg){ toastEl.textContent = msg; toastEl.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { toastEl.hidden = true; }, 2600); }
+  /* hats unlocked since you were last here */
+  function newHats(){
+    const f = Rewards.takeFresh();
+    if(f.length) setTimeout(() => toast(f.length === 1 ? `New hat: ${Hats.HATS[f[0]].name}! Tap a creature, then Hat.` : `${f.length} new hats! Tap a creature, then Hat.`, 4500), 600);
+  }
+  function toast(msg, ms = 2600){ toastEl.textContent = msg; toastEl.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { toastEl.hidden = true; }, ms); }
   const toys = {
     get ball(){ return ball; },
     pickUp(c){
@@ -693,7 +726,7 @@ function create({canvas, label, faces, toys: tray, onOpen}){
       if(!placed) centreOnHerd();
       frame();
     },
-    start(){ fit(); if(!placed) centreOnHerd(); if(still){ frame(); return; } if(!raf){ greet(); last = performance.now(); raf = requestAnimationFrame(tick); } },
+    start(){ fit(); if(!placed) centreOnHerd(); if(still){ newHats(); frame(); return; } if(!raf){ greet(); newHats(); last = performance.now(); raf = requestAnimationFrame(tick); } },
     setHour(h){ hourSet = h ?? null; lt = null; frame(); },   // null goes back to the clock
     stop(){ if(raf) cancelAnimationFrame(raf); raf = 0; vel = 0; goal = null; select(null); },
   };
