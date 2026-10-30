@@ -203,6 +203,7 @@ function drawDex(){
     const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.setAttribute('aria-pressed', String(filter===k));
     b.addEventListener('click', () => { filter = k; drawDex(); }); fl.appendChild(b);
   });
+  drawRewards();
   const dex = $('#dex'); dex.replaceChildren();
   if(!entries.length){
     dex.innerHTML = `<div class="empty"><h3>No creatures yet</h3><p class="muted">Every product barcode hatches one creature, and it is the same one for everyone who scans it. Grab anything from the pantry to start.</p><a class="btn" href="#scan" style="flex:0 0 auto;text-decoration:none">Scan your first barcode</a></div>`;
@@ -220,6 +221,26 @@ function drawDex(){
     grid.appendChild(c);
   }
   dex.appendChild(grid);
+}
+
+/* the rewards list: every hat, what earns it, and how close you are */
+function drawRewards(){
+  const el = $('#rewards'), rows = Rewards.list(), have = rows.filter(r => r.got).length;
+  const fmt = ([m, d]) => new Date(2000, m - 1, d).toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
+  el.innerHTML = `<summary><span>Hats</span><b>${have} of ${rows.length}</b></summary>`;
+  for(const group of [...new Set(rows.map(r => r.group))]){
+    const sec = document.createElement('section');
+    sec.innerHTML = `<h3 class="eyebrow">${group}</h3>`;
+    for(const r of rows.filter(x => x.group === group)){
+      const row = document.createElement('div'); row.className = 'reward' + (r.got ? '' : ' locked');
+      const state = r.got ? 'Earned' : r.goal ? `${r.have}/${r.goal}` : r.season ? (r.open ? 'Now' : `${fmt(r.season[0])}–${fmt(r.season[1])}`) : '';
+      row.innerHTML = `<i></i><div><b></b><span></span></div><em>${state}</em>`;
+      row.querySelector('i').appendChild(Hats.icon(r.hat));
+      row.querySelector('b').textContent = Hats.HATS[r.hat].name; row.querySelector('span').textContent = r.how;
+      sec.appendChild(row);
+    }
+    el.appendChild(sec);
+  }
 }
 
 /* ---------- home: the pasture ---------- */
@@ -273,12 +294,13 @@ $('#typebtn').addEventListener('click', () => { const m = $('#manual'); m.hidden
 $('#manual').addEventListener('submit', e => { e.preventDefault(); hatch($('#upc').value); });
 document.addEventListener('visibilitychange', () => {
   if(document.hidden && scanning) closeCamera();
+  if(!document.hidden){ Rewards.visit(); Rewards.check(); }   // back the next day: that's a visit too
   if(pasture){ if(document.hidden) pasture.stop(); else if(location.hash === '#home') pasture.start(); }
 });
 window.addEventListener('hashchange', route);
 
 updateCount();
-Rewards.check();   // hats already earned by an existing collection
+Rewards.visit(); Rewards.check();   // today's visit, and hats already earned by an existing collection
 const latest = Object.entries(col).sort((a,b) => b[1].last - a[1].last)[0];
 if(latest) show(latest[0]);
 else show(normalize(SAMPLE).gtin, {badge: {text: 'Example · scan to start', cls: 'example'}});

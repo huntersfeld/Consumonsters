@@ -13,6 +13,7 @@ function load(){
 }
 /* fake creatures: only the fields the rules read */
 const mk = (g, domain, rarity = 'common') => ({g, t: {gtin: g, domain, rarity}});
+const JUNE = new Date(2026, 5, 10, 12).getTime(), DAY = 864e5;   // outside every season
 
 test('every reward unlocks a real hat, and no hat is given twice', () => {
   const {CMRewards: R, CMHats: H} = load();
@@ -25,12 +26,12 @@ test('catching your first bird unlocks the propeller cap, once', () => {
   const {CMRewards: R} = load();
   let list = [];
   R.setSource(() => list);
-  assert.deepEqual([...R.check()], []);
+  assert.deepEqual([...R.check(JUNE)], []);
   list = [mk('a', 'bird')];
-  assert.deepEqual([...R.check().map(r => r.hat)].sort(), ['party', 'propeller']);
+  assert.deepEqual([...R.check(JUNE).map(r => r.hat)].sort(), ['party', 'propeller']);
   assert.ok(R.owns('propeller'));
   list.push(mk('b', 'bird'));
-  assert.equal(R.check().length, 0, 'nothing new for a second bird');
+  assert.equal(R.check(JUNE).length, 0, 'nothing new for a second bird');
   assert.deepEqual([...R.takeFresh()].sort(), ['party', 'propeller']);
   assert.equal(R.takeFresh().length, 0);
 });
@@ -39,7 +40,7 @@ test('milestones, rare finds and friendship', () => {
   const {CMRewards: R, CMBond: B} = load();
   const list = Array.from({length: 25}, (_, i) => mk('g' + i, 'mammal', i === 3 ? 'epic' : 'common'));
   R.setSource(() => list);
-  const got = R.check().map(r => r.id);
+  const got = R.check(JUNE).map(r => r.id);
   for(const id of ['first', 'mammal', 'ten', 'twentyfive', 'epic']) assert.ok(got.includes(id), id);
   assert.ok(!got.includes('fifty') && !got.includes('friend'));
   const day = 864e5, t0 = new Date(2026, 9, 29, 12).getTime();
@@ -48,13 +49,36 @@ test('milestones, rare finds and friendship', () => {
     for(const s of ['treat', 'treat', 'play', 'play', 'play']) B.add('g0', s, t0 + d * day);
   }
   assert.ok(B.hearts('g0') >= 3);
-  assert.ok(R.check().some(r => r.hat === 'bow'));
+  assert.ok(R.check(JUNE).some(r => r.hat === 'bow'));
+});
+
+test('visit streaks count days in a row', () => {
+  const {CMRewards: R} = load();
+  R.setSource(() => []);
+  R.visit(JUNE); R.visit(JUNE + 3e3); R.visit(JUNE + DAY);
+  assert.equal(R.visit(JUNE + 2 * DAY).streak, 3);
+  assert.deepEqual([...R.check(JUNE + 2 * DAY).map(r => r.hat)], ['sunhat']);
+  assert.equal(R.visit(JUNE + 4 * DAY).streak, 1, 'a missed day starts again');
+  for(let d = 5; d < 11; d++) R.visit(JUNE + d * DAY);
+  assert.ok(R.check(JUNE + 10 * DAY).some(r => r.hat === 'grad'));
+  const row = R.list(JUNE + 10 * DAY).find(r => r.id === 'streak7');
+  assert.ok(row.got && row.have === 7 && row.goal === 7);
+});
+
+test('the pumpkin is only earned in season, and kept after', () => {
+  const {CMRewards: R} = load();
+  R.setSource(() => []);
+  assert.equal(R.check(JUNE).length, 0);
+  assert.equal(R.list(JUNE).find(r => r.id === 'spooky').open, false);
+  assert.deepEqual([...R.check(new Date(2026, 9, 31, 20).getTime()).map(r => r.hat)], ['pumpkin']);
+  assert.ok(R.owns('pumpkin'));
+  assert.ok(!R.check(new Date(2026, 10, 11).getTime()).length && R.owns('pumpkin'));
 });
 
 test('a creature can only wear a hat you own', () => {
   const {CMRewards: R} = load();
   const list = [mk('a', 'reptile')];
-  R.setSource(() => list); R.check();
+  R.setSource(() => list); R.check(JUNE);
   R.wear('a', 'top');
   assert.equal(R.worn('a'), null);
   R.wear('a', 'cowboy');

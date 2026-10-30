@@ -28,6 +28,10 @@ const HATS = {
   crown: {name: 'Crown', pal: {a: [46, 90, 55], r: [350, 80, 52], y: [50, 100, 86], o: [40, 70, 20]}},
   bow: {name: 'Bow', pal: {a: [350, 75, 58], b: [350, 70, 45], o: [350, 55, 18]}},
   beret: {name: 'Beret', pal: {a: [355, 60, 42], b: [355, 55, 30], r: [0, 85, 62], o: [355, 45, 14]}},
+  tiara: {name: 'Tiara', pal: {a: [210, 10, 85], g: [190, 90, 70], o: [220, 20, 35]}},
+  sunhat: {name: 'Sun hat', pal: {a: [45, 65, 72], r: [350, 70, 55], p: [52, 95, 65], o: [35, 50, 25]}},
+  grad: {name: 'Graduation cap', pal: {a: [230, 20, 22], y: [48, 95, 58], o: [230, 25, 8]}},
+  pumpkin: {name: 'Pumpkin', pal: {a: [28, 90, 52], b: [20, 85, 40], g: [100, 45, 30], k: [30, 60, 12], o: [20, 70, 16]}},
 };
 const FLAT = new Set(['y', 'l', 'r', 'k', 'w', 'p', 'q']);   // these keep one colour; the rest get the sprite shading
 
@@ -82,6 +86,19 @@ const ART = {
   bow(P, s){
     const m = clamp(s - 1, 2, 4); P.row(-1, 1, 'b'); P.row(0, 1, 'b');
     for(let i = 1; i <= m; i++){ const h = Math.ceil(i * .5); for(let y = -1 - h; y <= h; y++) P.pair(i, y, 'a'); }
+  },
+  tiara(P, s){ P.row(0, s, 'a'); P.pair(0, -1, 'a'); P.pair(0, -2, 'g'); if(s >= 3) P.pair(Math.round(s / 2), -1, 'a'); if(s >= 5) P.pair(s - 1, -1, 'g'); },
+  sunhat(P, s){ P.row(0, s + 3, 'a'); P.dome(-1, s - 1, Math.max(2, Math.round(s * .6)), 'a'); P.row(-1, s - 1, 'r'); P.set(C + s - 2, -1, 'p'); },
+  grad(P, s){
+    P.row(0, s - 1, 'a'); P.row(-1, s - 1, 'a'); P.row(-2, s + 2, 'a'); P.row(-3, s, 'a'); P.row(-3, 1, 'y');
+    const x = C + s + 1; for(let y = -2; y <= 1; y++) P.set(x, y, 'y'); P.set(x, 2, 'y'); P.set(x + 1, 2, 'y');
+  },
+  pumpkin(P, s){
+    const n = Math.max(3, Math.round(s * .9)), m = n / 2;
+    for(let i = 0; i <= n; i++) P.row(-i, Math.max(1, Math.round(s * Math.sqrt(Math.max(0, 1 - ((i - m) / (m + .7)) ** 2)))), 'a');
+    for(let i = 0; i <= n; i++) for(const dx of [1, s - 2]) if(dx > 0 && P.get(C + dx, -i)) P.pair(dx, -i, 'b');
+    if(s >= 4){ const e = Math.max(1, Math.round(s / 2) - 1); P.pair(e, -Math.round(n * .6), 'k'); P.row(-Math.round(n * .25), Math.max(1, Math.round(s / 2)), 'k'); P.pair(0, -Math.round(n * .25), 'a'); }
+    P.row(-n - 1, 1, 'g'); P.set(C + 1, -n - 1, 'g');
   },
   beret(P, s){ P.row(0, s, 'b'); P.span(-1, C - s, C + s, 'a'); P.span(-2, C - s + 2, C + s, 'a'); P.set(C + 1, -3, 'a'); P.set(C - s + 1, -1, 'r'); },
 };
