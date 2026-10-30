@@ -350,13 +350,9 @@ function drawBubble(ctx, c, t){
   const x0 = Math.round(c.x) + (b.k === 'z' ? 3 : -Math.floor(w / 2)), y0 = Math.round(c.y) - FOOT - liftOf(c, t) + headTop(c) - 8 - rise;
   ctx.globalAlpha = Math.min(1, b.life * 3);
   const dot = (dx, dy) => G.forEach((row, y) => { for(let x = 0; x < w; x++) if(row[x] === '1') ctx.fillRect(x0 + x + dx, y0 + y + dy, 1, 1); });
-  if(b.k === 'z'){   // sleep: a plain white z, with a faint shadow so it still reads against a pale sky
-    ctx.fillStyle = 'rgba(20,24,48,.35)'; dot(1, 1);
-    ctx.fillStyle = 'rgb(255,255,255)'; dot(0, 0);
-  } else {
-    ctx.fillStyle = 'rgba(255,253,240,.92)'; ctx.fillRect(x0 - 1, y0 - 1, w + 2, 7);
-    ctx.fillStyle = b.k === '♥' ? 'rgb(214,52,84)' : 'rgb(40,36,48)'; dot(0, 0);
-  }
+  // plain white, no bubble, with a faint shadow so it still reads against a pale sky
+  ctx.fillStyle = 'rgba(20,24,48,.35)'; dot(1, 1);
+  ctx.fillStyle = 'rgb(255,255,255)'; dot(0, 0);
   ctx.globalAlpha = 1;
 }
 /* a little face for the jump-to row: the sprite's top half, cropped to its outline */
