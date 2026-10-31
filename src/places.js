@@ -15,6 +15,7 @@ const PLACES = [
   {id: 'garden', domain: 'insect', name: 'The undergrowth', sign: 'Undergrowth', swatch: ['#6FA33C', '#D9473B']},
   {id: 'glade', domain: 'flora', name: 'The glade', sign: 'Glade', swatch: ['#F4E59A', '#3F7A3A']},
   {id: 'cave', domain: 'mineral', name: 'The crystal cave', sign: 'Cave', swatch: ['#B58CE8', '#3C4256']},
+  {id: 'wilds', domain: 'elemental', name: 'The crossroads', sign: 'Crossroads', swatch: ['#E8572A', '#7CC6E8']},
 ];
 const byId = Object.fromEntries(PLACES.map(p => [p.id, p]));
 
