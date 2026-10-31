@@ -36,7 +36,7 @@ test('creatures live in their own domain\'s place once it opens, else the meadow
   assert.equal(P.homeOf('a1', list[2].t), 'lagoon');
   assert.equal(P.homeOf('b', list[1].t), 'meadow', 'one bird is not enough to open the cliffs');
   const res = Object.fromEntries(P.list().map(p => [p.id, p.residents]));
-  assert.deepEqual({...res}, {meadow: 2, lagoon: 3, cliffs: 0, rocks: 0, garden: 0, glade: 0, cave: 0, wilds: 0});
+  assert.deepEqual({...res}, {meadow: 2, lagoon: 3, cliffs: 0, rocks: 0, garden: 0, glade: 0, cave: 0, wilds: 0, sky: 0});
 });
 
 test('moving a creature sticks, and is saved', () => {
@@ -125,4 +125,18 @@ test('the crossroads open at three elementals', () => {
   P.setSource(() => list);
   assert.deepEqual([...P.check().map(p => p.id)], ['wilds']);
   assert.equal(P.homeOf('e1', list[0].t), 'wilds');
+});
+
+test('the sky island opens at three mythics, and creatures live on it', () => {
+  const {P} = load();
+  const list = [mk('y1', 'mythic'), mk('y2', 'mythic'), mk('y3', 'mythic')];
+  P.setSource(() => list);
+  assert.deepEqual([...P.check().map(p => p.id)], ['sky']);
+  assert.equal(P.homeOf('y1', list[0].t), 'sky');
+  assert.equal(P.byId.sky.at, 'on');
+});
+
+test('every domain has a place of its own', () => {
+  const {P} = load();
+  assert.deepEqual([...P.PLACES.map(p => p.domain)].sort(), ['aquatic', 'bird', 'elemental', 'flora', 'insect', 'mammal', 'mineral', 'mythic', 'reptile']);
 });

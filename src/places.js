@@ -6,7 +6,7 @@
 'use strict';
 const STORE = 'consumonsters.places.v1';
 const NEED = 3;
-/* the places that are built so far, in signpost order; swatch is the signpost's two colours */
+/* the places, in signpost order; swatch is the signpost's two colours, and at is how to say you're there (in, unless it's on) */
 const PLACES = [
   {id: 'meadow', domain: 'mammal', name: 'The meadow', sign: 'Meadow', swatch: ['#8CC85A', '#5DA6D8']},
   {id: 'lagoon', domain: 'aquatic', name: 'The lagoon', sign: 'Lagoon', swatch: ['#F1DC9C', '#2FB5C9']},
@@ -16,6 +16,7 @@ const PLACES = [
   {id: 'glade', domain: 'flora', name: 'The glade', sign: 'Glade', swatch: ['#F4E59A', '#3F7A3A']},
   {id: 'cave', domain: 'mineral', name: 'The crystal cave', sign: 'Cave', swatch: ['#B58CE8', '#3C4256']},
   {id: 'wilds', domain: 'elemental', name: 'The crossroads', sign: 'Crossroads', swatch: ['#E8572A', '#7CC6E8']},
+  {id: 'sky', domain: 'mythic', name: 'The sky island', at: 'on', sign: 'Sky island', swatch: ['#F7F3FF', '#8FD16A']},
 ];
 const byId = Object.fromEntries(PLACES.map(p => [p.id, p]));
 
