@@ -251,7 +251,7 @@ function drawFireflies(ctx, t, lt, x0, x1){
 
 /* ---------- places ---------- */
 /* a place's builder fills in: name, Y0 (the back edge creatures stay in front of), isWater, LAND (a canvas),
-   PROPS (things drawn in depth order with the creatures), NAPS (spots to nap at), drawWater(ctx, t, x0, x1),
+   PROPS (things drawn in depth order with the creatures), NAPS (spots to nap at), drawWater(ctx, t, x0, x1, light),
    flow(x, y) (which way a floating ball drifts), and optionally isGap (ground nobody can stand on or swim in, like a
    gorge), TREE blobs, butterflyPaths, petals, leaves, seeds, dive */
 const BUILDERS = {}, BUILT = {};

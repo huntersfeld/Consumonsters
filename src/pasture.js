@@ -438,7 +438,7 @@ function create({canvas, label, faces, toys: tray, onOpen, movesFor = () => [], 
     const g = L.graded ? graded() : ctx;
     if(g !== ctx){ g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, VW, H); g.setTransform(1, 0, 0, 1, -x0, 0); g.imageSmoothingEnabled = false; }
     K.drawLand(g, t, L, S);
-    S.drawWater(g, t, x0, x1);
+    S.drawWater(g, t, x0, x1, L);
     const items = [];
     for(const p of S.PROPS) if(p.x > x0 - 8 && p.x < x1 + 8) items.push(p);
     for(const c of mobs) if(c.x + F / 2 > x0 && c.x - F / 2 < x1) items.push({y: c.y + .5, c});
