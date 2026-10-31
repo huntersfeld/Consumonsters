@@ -48,14 +48,21 @@ function makeSprite(t){
 }
 /* Where a creature may stand. Each place splits its dry land into patches (the two banks of the meadow's stream,
    the lagoon's islands). Walkers keep to the patch they live on; winged ones can use any patch, hopping over the
-   water between them; swimmers can be anywhere including the water, and floaters drift wherever they like. */
+   water between them; swimmers can be anywhere including the water (but not down a gorge), and floaters drift
+   wherever they like. */
 const landAt = (x, y) => { x = Math.round(x); y = Math.round(y); return x < 0 || y < 0 || x >= W || y >= H ? 0 : S.land[y * W + x]; };
 function walkable(c, x, y){
   if(y < Y0 || y > H - 3 || x - c.hw < 3 || x + c.hw > W - 3) return false;
-  if(c.move === 'swim' || c.move === 'float') return true;
+  if(c.move === 'float' || (c.move === 'swim' && !S.isGap)) return true;   // where there's a drop to fall into, swimmers keep to their patch like walkers
   const m = landAt(x, y);
   if(!m || landAt(x - c.hw, y) !== m || landAt(x + c.hw, y) !== m) return false;
   return c.move === 'fly' || m === c.home;
+}
+/* the nearest dry spot to (x, y) that isn't over a drop, for a toy that would land in one */
+function solid(x, y){
+  if(!S.isGap || landAt(x, y)) return [x, y];
+  for(let r = 2; r < W; r += 2) for(let a = 0; a < 12; a++){ const tx = x + Math.cos(a * Math.PI / 6) * r, ty = clamp(y + Math.sin(a * Math.PI / 6) * r * .6, Y0, H - 3); if(landAt(tx, ty)) return [tx, ty]; }
+  return [x, y];
 }
 const inWaterAt = (x, y) => { x = Math.round(x); y = Math.round(y); return y >= 0 && y < H && x >= 0 && x < W && !!S.isWater[y * W + x]; };
 const inWater = c => inWaterAt(c.x, c.y);
@@ -601,7 +608,7 @@ function create({canvas, label, faces, toys: tray, onOpen, movesFor = () => [], 
   function throwBall(x, y){
     const fx0 = camX + VW / 2, fy0 = H - 2, d = Math.hypot(x - fx0, (y - fy0) * 1.4), ux = (x - fx0) / (d || 1), uy = (y - fy0) / (d || 1);
     const hops = [{fx: fx0, fy: fy0, tx: x, ty: y, dur: .45 + d / 260, h: 12 + d * .12}];
-    for(const k of [.22, .08]){ const p = hops[hops.length - 1], s = d * k; hops.push({fx: p.tx, fy: p.ty, tx: p.tx + ux * s, ty: clamp(p.ty + uy * s * .6, Y0, H - 3), dur: .2 + k, h: p.h * .3}); }
+    for(const k of [.22, .08]){ const p = hops[hops.length - 1], s = d * k, [tx, ty] = solid(p.tx + ux * s, clamp(p.ty + uy * s * .6, Y0, H - 3)); hops.push({fx: p.tx, fy: p.ty, tx, ty, dur: .2 + k, h: p.h * .3}); }
     if(ball && ball.holder){ const h = ball.holder; h.mode = null; }
     ball = {x: fx0, y: fy0, z: 0, hops, t: 0, holder: null, home: {x: fx0, y: H - 8}, landed: false};
     for(const c of mobs) if(c.mode === 'fetch') c.mode = null;
@@ -725,7 +732,7 @@ function create({canvas, label, faces, toys: tray, onOpen, movesFor = () => [], 
   canvas.addEventListener('click', e => {
     if(dragged){ dragged = false; return; }
     const {x: px, y: py} = toScene(e), hit = hitAt({x: px, y: py});
-    if(armed && !still){ select(null); if(armed === 'ball') throwBall(px, clamp(py, Y0, H - 3)); else { dropTreat(px, clamp(py, Y0, H - 3)); if(Bond.treats() < 1){ armed = null; updateToys(); } } return; }   // holding a toy: every tap uses it
+    if(armed && !still){ select(null); const [ax, ay] = solid(px, clamp(py, Y0, H - 3)); if(armed === 'ball') throwBall(ax, ay); else { dropTreat(ax, ay); if(Bond.treats() < 1){ armed = null; updateToys(); } } return; }   // holding a toy: every tap uses it
     if(hit){ select(hit !== sel ? hit : null); return; }
     const hadSel = !!sel; select(null);
     if(still || hadSel) return;   // the first tap off a creature just closes its label
