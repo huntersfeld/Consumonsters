@@ -36,7 +36,7 @@ test('creatures live in their own domain\'s place once it opens, else the meadow
   assert.equal(P.homeOf('a1', list[2].t), 'lagoon');
   assert.equal(P.homeOf('b', list[1].t), 'meadow', 'one bird is not enough to open the cliffs');
   const res = Object.fromEntries(P.list().map(p => [p.id, p.residents]));
-  assert.deepEqual({...res}, {meadow: 2, lagoon: 3, cliffs: 0, rocks: 0});
+  assert.deepEqual({...res}, {meadow: 2, lagoon: 3, cliffs: 0, rocks: 0, garden: 0});
 });
 
 test('moving a creature sticks, and is saved', () => {
@@ -93,4 +93,12 @@ test('the red rocks open at three reptiles', () => {
   list.push(mk('r3', 'reptile'));
   assert.deepEqual([...P.check().map(p => p.id)], ['rocks']);
   assert.equal(P.homeOf('r1', list[0].t), 'rocks');
+});
+
+test('the undergrowth opens at three insects', () => {
+  const {P} = load();
+  const list = [mk('i1', 'insect'), mk('i2', 'insect'), mk('i3', 'insect')];
+  P.setSource(() => list);
+  assert.deepEqual([...P.check().map(p => p.id)], ['garden']);
+  assert.equal(P.homeOf('i2', list[1].t), 'garden');
 });
