@@ -271,11 +271,11 @@ function drawHome(){
   pasture.setCreatures(all.slice(0, PASTURE_MAX).map(([g]) => ({g, t: creature(g)})));
   pasture.start();
   if(justOpened.length){ pasture.toast(opened(justOpened), 4500); justOpened = []; }
-  const n = all.length, where = P.name.toLowerCase();
+  const n = all.length, where = `${P.at || 'in'} ${P.name.toLowerCase()}`;   // in the meadow, on the sky island
   $('#pasture-note').textContent = !Object.keys(col).length ? 'Nobody lives here yet. Scan a barcode and your creatures will move in.'
-    : !n ? `Nobody lives in ${where} yet. Tap a creature in another place, then Move.`
-    : n > PASTURE_MAX ? `Your ${PASTURE_MAX} most recent catches are out in ${where}. Tap one to say hello.`
-    : `${n} ${n === 1 ? 'creature lives' : 'creatures live'} in ${where}. Tap one to say hello.`;
+    : !n ? `Nobody lives ${where} yet. Tap a creature in another place, then Move.`
+    : n > PASTURE_MAX ? `Your ${PASTURE_MAX} most recent catches are out ${where}. Tap one to say hello.`
+    : `${n} ${n === 1 ? 'creature lives' : 'creatures live'} ${where}. Tap one to say hello.`;
 }
 /* the signposts: one per place, the locked ones showing how close you are */
 function drawSigns(here){
