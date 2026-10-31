@@ -253,7 +253,8 @@ function drawFireflies(ctx, t, lt, x0, x1){
 /* a place's builder fills in: name, Y0 (the back edge creatures stay in front of), isWater, LAND (a canvas),
    PROPS (things drawn in depth order with the creatures), NAPS (spots to nap at), drawWater(ctx, t, x0, x1, light),
    flow(x, y) (which way a floating ball drifts), and optionally isGap (ground nobody can stand on or swim in, like a
-   gorge), TREE blobs, butterflyPaths, petals, leaves, seeds, dive */
+   gorge), TREE blobs, butterflyPaths, petals, leaves, seeds, dive, lift (how much less dark its night is) and
+   drawGlow(ctx, t, light, x0, x1) (light of its own, drawn over the colour grade) */
 const BUILDERS = {}, BUILT = {};
 function define(id, builder){ BUILDERS[id] = builder; }
 function place(id){

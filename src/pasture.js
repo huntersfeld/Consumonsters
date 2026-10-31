@@ -450,12 +450,14 @@ function create({canvas, label, faces, toys: tray, onOpen, movesFor = () => [], 
     if(g !== ctx){   // multiply by the light, keep the layer's own shape, then lay it over the sky
       g.setTransform(1, 0, 0, 1, 0, 0);
       const m = M.getContext('2d'); m.globalCompositeOperation = 'copy'; m.drawImage(O, 0, 0);
-      g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgb(${L.tint})`; g.fillRect(0, 0, VW, H);
+      const tint = S.lift ? L.tint.map(v => Math.round(v + (255 - v) * S.lift * L.night)) : L.tint;   // a place with its own light (the crystal cave) darkens less
+      g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgb(${tint})`; g.fillRect(0, 0, VW, H);
       g.globalCompositeOperation = 'destination-in'; g.drawImage(M, 0, 0);
       g.globalCompositeOperation = 'source-over';
       ctx.drawImage(O, x0, 0);
     }
     K.drawMoonlight(ctx, t, L, x0, x1, S); K.drawFireflies(ctx, t, L, x0, x1);
+    if(S.drawGlow) S.drawGlow(ctx, t, L, x0, x1);
     for(const c of mobs) if(c.bubble && !c.dive && c.x + F / 2 > x0 && c.x - F / 2 < x1) drawBubble(ctx, c, t);
     if(sel) placeLabel();
   }
